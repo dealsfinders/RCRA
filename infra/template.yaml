@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: RCRA - Root Cause & Remediation Assistant (MVP)
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 30
+    MemorySize: 512
+    Handler: index.handler
+    Tracing: Active
+
+Parameters:
+  BedrockRegion:
+    Type: String
+    Default: us-east-1
+  LogGroupName:
+    Type: String
+    Default: /aws/lambda/your-app-log-group
+
+Resources:
+  RCRATable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: RCRARootCauseTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: IncidentId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: IncidentId
+          KeyType: HASH
+
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: RCRANotifications
+
+  RCRALogIngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: rcra-log-ingest
+      CodeUri: ../src/
+      Handler: log_ingest_lambda.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            Effect: Allow
+            Action:
+              - states:StartExecution
+            Resource: "*"
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref RCRAStateMachine
+      Events:
+        CloudWatchLogs:
+          Type: CloudWatchLogs
+          Properties:
+            LogGroupName: !Ref LogGroupName
+            FilterPattern: '"ERROR"'
+
+  RCRAAnalyzerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: rcra-analyzer
+      CodeUri: ../src/
+      Handler: rca_analyzer_lambda.handler
+      Environment:
+        Variables:
+          BEDROCK_REGION: !Ref BedrockRegion
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+            Resource: "*"
+
+  RCRARemediatorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: rcra-remediator
+      CodeUri: ../src/
+      Handler: remediator_lambda.handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+
+  RCRAPersistFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: rcra-persist
+      CodeUri: ../src/
+      Handler: persist_lambda.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref RCRATable
+          TOPIC_ARN: !Ref NotificationTopic
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AmazonDynamoDBFullAccess
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt NotificationTopic.TopicName
+
+  RCRAStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: RCRAStateMachine
+      Definition:
+        Comment: "RCRA MVP RCA and remediation flow"
+        StartAt: Analyze
+        States:
+          Analyze:
+            Type: Task
+            Resource: !GetAtt RCRAAnalyzerFunction.Arn
+            ResultPath: $.analysis
+            Next: Remediate
+          Remediate:
+            Type: Task
+            Resource: !GetAtt RCRARemediatorFunction.Arn
+            ResultPath: $.remediation
+            Next: Persist
+          Persist:
+            Type: Task
+            Resource: !GetAtt RCRAPersistFunction.Arn
+            End: true
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RCRAAnalyzerFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RCRARemediatorFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RCRAPersistFunction
+
+Outputs:
+  StateMachineArn:
+    Description: ARN of the RCRA state machine
+    Value: !Ref RCRAStateMachine
+  NotificationTopicArn:
+    Description: ARN of the SNS topic for notifications
+    Value: !Ref NotificationTopic
+  TableName:
+    Description: DynamoDB table storing RCA records
+    Value: !Ref RCRATable
