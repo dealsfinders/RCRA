@@ -29,8 +29,9 @@ def handler(event, context):
     prompt = PROMPT_TEMPLATE + log_message
 
     body = {
+        "anthropic_version": "bedrock-2023-05-31",
         "messages": [
-            {"role": "user", "content": [{"type": "text", "text": prompt}]}
+            {"role": "user", "content": prompt}
         ],
         "max_tokens": 512,
         "temperature": 0.2,
@@ -45,8 +46,9 @@ def handler(event, context):
 
     model_payload = json.loads(response["body"].read().decode("utf-8"))
 
-    text = model_payload.get("output", {}).get("message", {}).get("content", [{}])
-    text = text[0].get("text", "") if text else ""
+    # Extract text from Claude response
+    content = model_payload.get("content", [])
+    text = content[0].get("text", "") if content else ""
 
     try:
         rca = json.loads(text)

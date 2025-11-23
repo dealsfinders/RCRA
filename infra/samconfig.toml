@@ -1,0 +1,12 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "rcra-stack"
+s3_bucket = "rcra-sam-deployments-879381275427"
+s3_prefix = "rcra"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "BedrockRegion=us-east-1 LogGroupName=/aws/lambda/rcra-test-app"
+confirm_changeset = false
+

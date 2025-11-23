@@ -4,7 +4,7 @@ Description: RCRA - Root Cause & Remediation Assistant (MVP)
 
 Globals:
   Function:
-    Runtime: python3.11
+    Runtime: python3.12
     Timeout: 30
     MemorySize: 512
     Handler: index.handler
@@ -101,6 +101,64 @@ Resources:
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt NotificationTopic.TopicName
 
+  RCRADashboardAPIFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: rcra-dashboard-api
+      CodeUri: ../src/
+      Handler: dashboard_api_lambda.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref RCRATable
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBReadPolicy:
+            TableName: !Ref RCRATable
+      Events:
+        GetIncidents:
+          Type: HttpApi
+          Properties:
+            Path: /incidents
+            Method: GET
+            ApiId: !Ref RCRADashboardAPI
+        GetIncidentById:
+          Type: HttpApi
+          Properties:
+            Path: /incidents/{id}
+            Method: GET
+            ApiId: !Ref RCRADashboardAPI
+        GetStatistics:
+          Type: HttpApi
+          Properties:
+            Path: /statistics
+            Method: GET
+            ApiId: !Ref RCRADashboardAPI
+        OptionsIncidents:
+          Type: HttpApi
+          Properties:
+            Path: /incidents
+            Method: OPTIONS
+            ApiId: !Ref RCRADashboardAPI
+        OptionsStatistics:
+          Type: HttpApi
+          Properties:
+            Path: /statistics
+            Method: OPTIONS
+            ApiId: !Ref RCRADashboardAPI
+
+  RCRADashboardAPI:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name: RCRADashboardAPI
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - "*"
+        AllowMethods:
+          - GET
+          - OPTIONS
+
   RCRAStateMachine:
     Type: AWS::Serverless::StateMachine
     Properties:
@@ -141,3 +199,6 @@ Outputs:
   TableName:
     Description: DynamoDB table storing RCA records
     Value: !Ref RCRATable
+  DashboardAPIEndpoint:
+    Description: API Gateway endpoint URL for RCRA Dashboard
+    Value: !Sub "https://${RCRADashboardAPI}.execute-api.${AWS::Region}.amazonaws.com"
