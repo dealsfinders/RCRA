@@ -4,7 +4,7 @@ import os
 import boto3
 
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
-MODEL_ID = "anthropic.claude-3-sonnet-20240229-v1:0"
+MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
 bedrock = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
 
@@ -17,6 +17,9 @@ Given the following log snippet, respond in strict JSON with fields:
 - severity: one of LOW, MEDIUM, HIGH, CRITICAL
 - suggested_remediation_steps: list of 3-5 actionable steps
 - tags: array of keywords
+- recurrence_hint: boolean, true if this looks like a recurring/systemic issue
+- auto_remediation_candidate: boolean, true if safe/appropriate to attempt auto remediation
+- rationale: short sentence explaining the recurrence/eligibility decision
 
 Log:
 """  # log text appended
@@ -33,8 +36,8 @@ def handler(event, context):
         "messages": [
             {"role": "user", "content": prompt}
         ],
-        "max_tokens": 512,
-        "temperature": 0.2,
+        "max_tokens": 800,
+        "temperature": 0.1,
     }
 
     response = bedrock.invoke_model(
@@ -62,6 +65,9 @@ def handler(event, context):
                 "Refine RCA prompt and retry.",
             ],
             "tags": ["fallback"],
+            "recurrence_hint": False,
+            "auto_remediation_candidate": False,
+            "rationale": "Fallback – model did not return JSON.",
         }
 
     event["analysisResult"] = rca

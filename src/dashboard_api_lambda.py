@@ -9,6 +9,8 @@ from boto3.dynamodb.conditions import Key, Attr
 dynamodb = boto3.resource("dynamodb")
 table_name = os.environ.get("TABLE_NAME", "RCRARootCauseTable")
 table = dynamodb.Table(table_name)
+topic_arn = os.environ.get("TOPIC_ARN")
+sns = boto3.client("sns") if topic_arn else None
 
 
 class DecimalEncoder(json.JSONEncoder):
@@ -30,6 +32,39 @@ def cors_headers():
         "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
         "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     }
+
+
+def publish_stage_notification(stage, item, status, details=""):
+    """Publish an SNS notification for a ticket stage transition"""
+    if not sns or not topic_arn:
+        return
+
+    incident_id = item.get("IncidentId")
+    ticket = item.get("TicketNumber", "N/A")
+    analysis = item.get("AnalysisResult", {})
+    remediation = item.get("RemediationResult", {})
+
+    summary = analysis.get("summary", "No summary provided")
+    severity = analysis.get("severity", "UNKNOWN")
+    action_taken = remediation.get("remediationActionTaken", "N/A")
+
+    subject = f"[RCRA] {stage}: {severity} - {incident_id}"
+
+    message = (
+        f"Incident: {incident_id}\n"
+        f"Ticket: {ticket}\n"
+        f"Status: {status}\n"
+        f"Severity: {severity}\n"
+        f"Summary: {summary}\n"
+        f"Remediation action: {action_taken}\n"
+        f"Details: {details}\n"
+        f"Timestamp: {datetime.utcnow().isoformat()}Z\n"
+    )
+
+    try:
+        sns.publish(TopicArn=topic_arn, Subject=subject, Message=message)
+    except Exception as e:
+        print(f"[WARN] Failed to publish stage notification: {str(e)}")
 
 
 def handler(event, context):
@@ -64,7 +99,10 @@ def handler(event, context):
         if path == "/incidents" or path.endswith("/incidents"):
             response_data = get_incidents(query_parameters)
         elif "/incidents/" in path and path_parameters.get("id"):
-            response_data = get_incident_by_id(path_parameters["id"])
+            if path.endswith("/logs"):
+                response_data = get_incident_logs(path_parameters["id"], query_parameters)
+            else:
+                response_data = get_incident_by_id(path_parameters["id"])
         elif path == "/statistics" or path.endswith("/statistics"):
             response_data = get_statistics()
         elif path == "/trigger-error" or path.endswith("/trigger-error"):
@@ -78,6 +116,18 @@ def handler(event, context):
             elif http_method == "POST":
                 body = json.loads(event.get("body", "{}"))
                 response_data = update_critical_functions(body)
+            else:
+                return {
+                    "statusCode": 405,
+                    "headers": cors_headers(),
+                    "body": json.dumps({"error": "Method not allowed"}),
+                }
+        elif path == "/resolve" or path.endswith("/resolve"):
+            if http_method == "POST":
+                body = json.loads(event.get("body", "{}"))
+                incident_id = body.get("incidentId")
+                resolved_by = body.get("resolvedBy", "MANUAL_RESOLUTION")
+                response_data = resolve_incident(incident_id, resolved_by)
             else:
                 return {
                     "statusCode": 405,
@@ -124,6 +174,9 @@ def get_incidents(query_params):
     response = table.scan(**scan_kwargs)
 
     items = response.get("Items", [])
+    
+    # Filter out configuration items (CONFIG_*)
+    items = [item for item in items if not item.get("IncidentId", "").startswith("CONFIG_")]
 
     # Sort by CreatedAt descending
     items.sort(key=lambda x: x.get("CreatedAt", ""), reverse=True)
@@ -133,9 +186,17 @@ def get_incidents(query_params):
     for item in items:
         analysis = item.get("AnalysisResult", {})
         remediation = item.get("RemediationResult", {})
+        
+        # Get error frequency for this signature
+        error_signature = item.get("ErrorSignature", "")
+        error_count = get_error_frequency_count(error_signature, item.get("LogGroup"))
+        
         incident = {
             "incidentId": item.get("IncidentId"),
             "ticketNumber": item.get("TicketNumber", "N/A"),
+            "status": item.get("Status", "OPEN"),
+            "resolvedAt": item.get("ResolvedAt"),
+            "resolvedBy": item.get("ResolvedBy"),
             "timestamp": item.get("CreatedAt"),
             "logGroup": item.get("LogGroup"),
             "logStream": item.get("LogStream"),
@@ -146,6 +207,8 @@ def get_incidents(query_params):
             "tags": analysis.get("tags", []),
             "remediationEligible": remediation.get("autoRemediationEligible", False),
             "remediationAction": remediation.get("remediationActionTaken", "NONE"),
+            "errorSignature": error_signature,
+            "occurrenceCount": error_count,
         }
         incidents.append(incident)
 
@@ -169,6 +232,10 @@ def get_incident_by_id(incident_id):
     # Return full incident details
     analysis = item.get("AnalysisResult", {})
     remediation = item.get("RemediationResult", {})
+    error_signature = item.get("ErrorSignature") or analysis.get("summary", "")[:100]
+    log_group = item.get("LogGroup")
+    related = get_error_occurrences(error_signature, log_group)
+    related = [r for r in related if r.get("incidentId") != incident_id]
 
     incident_detail = {
         "incidentId": item.get("IncidentId"),
@@ -177,6 +244,7 @@ def get_incident_by_id(incident_id):
         "logGroup": item.get("LogGroup"),
         "logStream": item.get("LogStream"),
         "rawMessage": item.get("RawLogMessage", ""),
+        "errorSignature": error_signature,
         "analysis": {
             "summary": analysis.get("summary", "N/A"),
             "severity": analysis.get("severity", "UNKNOWN"),
@@ -190,9 +258,51 @@ def get_incident_by_id(incident_id):
             "details": remediation.get("details", ""),
             "awsActions": remediation.get("awsActions", []),
         },
+        "relatedIncidents": related,
     }
 
     return incident_detail
+
+
+def get_incident_logs(incident_id, query_params):
+    """Fetch recent log events for the incident's log group/stream"""
+    limit = int(query_params.get("limit", 50))
+    try:
+        # Fetch incident to get log metadata
+        response = table.get_item(Key={"IncidentId": incident_id})
+        item = response.get("Item")
+        if not item:
+            return {"error": "Incident not found"}
+
+        log_group = item.get("LogGroup")
+        log_stream = item.get("LogStream")
+        if not log_group:
+            return {"error": "Log group not recorded for this incident"}
+
+        params = {
+            "logGroupName": log_group,
+            "limit": limit,
+            "startFromHead": False,
+        }
+        if log_stream:
+            params["logStreamNames"] = [log_stream]
+
+        res = logs_client.filter_log_events(**params)
+        events = res.get("events", [])
+        # Normalize shape
+        parsed = [
+            {
+                "timestamp": evt.get("timestamp"),
+                "ingestionTime": evt.get("ingestionTime"),
+                "message": evt.get("message"),
+                "logStreamName": evt.get("logStreamName"),
+            }
+            for evt in events
+        ]
+        return {"events": parsed, "count": len(parsed)}
+    except Exception as e:
+        print(f"[LOGS] Failed to fetch logs: {str(e)}")
+        return {"error": str(e)}
 
 
 def get_statistics():
@@ -200,10 +310,14 @@ def get_statistics():
     # Scan all items (in production, consider using DynamoDB Streams or separate stats table)
     response = table.scan()
     items = response.get("Items", [])
+    
+    # Filter out configuration items (CONFIG_*)
+    items = [item for item in items if not item.get("IncidentId", "").startswith("CONFIG_")]
 
     # Calculate statistics
     total_incidents = len(items)
     severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
+    status_counts = {"OPEN": 0, "RESOLVED": 0}
     remediation_eligible = 0
     recent_incidents = []
 
@@ -219,6 +333,11 @@ def get_statistics():
         severity = analysis.get("severity", "UNKNOWN")
         if severity in severity_counts:
             severity_counts[severity] += 1
+        
+        # Count status
+        status = item.get("Status", "OPEN")
+        if status in status_counts:
+            status_counts[status] += 1
 
         # Count remediation eligible
         remediation = item.get("RemediationResult", {})
@@ -252,6 +371,7 @@ def get_statistics():
             {
                 "incidentId": item.get("IncidentId"),
                 "ticketNumber": item.get("TicketNumber", "N/A"),
+                "status": item.get("Status", "OPEN"),
                 "timestamp": item.get("CreatedAt"),
                 "summary": analysis.get("summary", "N/A"),
                 "severity": analysis.get("severity", "UNKNOWN"),
@@ -266,8 +386,11 @@ def get_statistics():
             "incidents24h": incidents_24h,
             "remediationEligible": remediation_eligible,
             "avgSeverity": _calculate_avg_severity(severity_counts, total_incidents),
+            "openTickets": status_counts.get("OPEN", 0),
+            "resolvedTickets": status_counts.get("RESOLVED", 0),
         },
         "severityBreakdown": severity_counts,
+        "statusBreakdown": status_counts,
         "topTags": [{"tag": tag, "count": count} for tag, count in top_tags],
         "recentIncidents": recent_incidents,
         "lastUpdated": datetime.utcnow().isoformat() + "Z",
@@ -335,6 +458,7 @@ def trigger_remediation(body):
     """Manually trigger remediation for an incident"""
     incident_id = body.get("incidentId")
     action = body.get("action")  # e.g., "restart", "increase_timeout", "increase_memory"
+    triggered_by = body.get("triggeredBy", "DASHBOARD_MANUAL_REMEDIATION")
     
     if not incident_id:
         return {"error": "incidentId is required"}
@@ -347,14 +471,42 @@ def trigger_remediation(body):
         if not item:
             return {"error": "Incident not found"}
         
-        # TODO: Invoke remediator Lambda with specific action
-        # For now, return success with action details
+        # For now, simulate remediation success and mark ticket resolved
+        remediation_action = (action or "MANUAL_TRIGGERED").upper()
+        remediation_update = {
+            "autoRemediationEligible": True,
+            "remediationActionTaken": f"{remediation_action}_IN_PROGRESS",
+            "details": f"Remediation triggered via dashboard action '{action or 'manual'}' and is now IN_PROGRESS.",
+            "awsActions": item.get("RemediationResult", {}).get("awsActions", []),
+            "manualTrigger": True,
+        }
+
+        table.update_item(
+            Key={"IncidentId": incident_id},
+            UpdateExpression="SET RemediationResult = :rem, #status = :status",
+            ExpressionAttributeNames={"#status": "Status"},
+            ExpressionAttributeValues={
+                ":rem": remediation_update,
+                ":status": "IN_PROGRESS",
+            },
+        )
+
+        # Send notification for IN_PROGRESS stage
+        item["RemediationResult"] = remediation_update
+        item["Status"] = "IN_PROGRESS"
+        publish_stage_notification(
+            stage="Remediation In Progress",
+            item=item,
+            status="IN_PROGRESS",
+            details=remediation_update["details"],
+        )
         
         return {
             "success": True,
             "incidentId": incident_id,
             "action": action,
-            "message": f"Remediation action '{action}' queued for incident {incident_id}",
+            "status": "IN_PROGRESS",
+            "message": f"Remediation action '{action}' started for incident {incident_id}",
             "timestamp": datetime.utcnow().isoformat() + "Z"
         }
         
@@ -426,3 +578,115 @@ def update_critical_functions(body):
             "error": str(e)
         }
 
+
+def get_error_frequency_count(error_signature, log_group):
+    """Get count of similar errors in last 24 hours"""
+    if not error_signature:
+        return 1
+    
+    try:
+        from datetime import timedelta
+        from boto3.dynamodb.conditions import Attr
+        
+        now = datetime.utcnow()
+        last_24h = now - timedelta(hours=24)
+        last_24h_str = last_24h.isoformat() + "Z"
+        
+        response = table.scan(
+            FilterExpression=Attr('ErrorSignature').eq(error_signature) & 
+                           Attr('CreatedAt').gt(last_24h_str) &
+                           Attr('LogGroup').eq(log_group)
+        )
+        
+        return len(response.get('Items', []))
+    except Exception as e:
+        print(f"[ERROR] Failed to get error frequency: {str(e)}")
+        return 1
+
+
+def get_error_occurrences(error_signature, log_group):
+    """Get list of all occurrences of this error in last 24 hours"""
+    if not error_signature:
+        return []
+    
+    try:
+        from datetime import timedelta
+        from boto3.dynamodb.conditions import Attr
+        
+        now = datetime.utcnow()
+        last_24h = now - timedelta(hours=24)
+        last_24h_str = last_24h.isoformat() + "Z"
+        
+        response = table.scan(
+            FilterExpression=Attr('ErrorSignature').eq(error_signature) & 
+                           Attr('CreatedAt').gt(last_24h_str) &
+                           Attr('LogGroup').eq(log_group)
+        )
+        
+        items = response.get('Items', [])
+        occurrences = []
+        
+        for item in items:
+            occurrences.append({
+                'timestamp': item.get('CreatedAt'),
+                'incidentId': item.get('IncidentId'),
+                'ticketNumber': item.get('TicketNumber'),
+                'status': item.get('Status', 'UNKNOWN')
+            })
+        
+        # Sort by timestamp descending
+        occurrences.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        return occurrences[:10]  # Return last 10 occurrences
+    except Exception as e:
+        print(f"[ERROR] Failed to get error occurrences: {str(e)}")
+        return []
+
+
+def resolve_incident(incident_id, resolved_by):
+    """Mark an incident as resolved"""
+    try:
+        # Get the incident
+        response = table.get_item(Key={"IncidentId": incident_id})
+        item = response.get("Item")
+        
+        if not item:
+            return {"success": False, "error": "Incident not found"}
+        
+        # Update status
+        table.update_item(
+            Key={"IncidentId": incident_id},
+            UpdateExpression="SET #status = :status, ResolvedAt = :resolvedAt, ResolvedBy = :resolvedBy",
+            ExpressionAttributeNames={
+                "#status": "Status"
+            },
+            ExpressionAttributeValues={
+                ":status": "RESOLVED",
+                ":resolvedAt": datetime.utcnow().isoformat() + "Z",
+                ":resolvedBy": resolved_by
+            }
+        )
+
+        # Notify resolution
+        item["Status"] = "RESOLVED"
+        item["ResolvedAt"] = datetime.utcnow().isoformat() + "Z"
+        item["ResolvedBy"] = resolved_by
+        publish_stage_notification(
+            stage="Resolved",
+            item=item,
+            status="RESOLVED",
+            details=f"Incident resolved by {resolved_by}",
+        )
+        
+        return {
+            "success": True,
+            "incidentId": incident_id,
+            "status": "RESOLVED",
+            "message": f"Incident {incident_id} marked as resolved by {resolved_by}"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }

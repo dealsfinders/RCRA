@@ -143,6 +143,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref RCRATable
+          TOPIC_ARN: !Ref NotificationTopic
       Policies:
         - AWSLambdaBasicExecutionRole
         - DynamoDBReadPolicy:
@@ -150,9 +151,24 @@ Resources:
         - Statement:
             Effect: Allow
             Action:
+              - dynamodb:PutItem
+              - dynamodb:GetItem
+              - dynamodb:UpdateItem
+            Resource:
+              - !GetAtt RCRATable.Arn
+        - Statement:
+            Effect: Allow
+            Action:
               - lambda:InvokeFunction
             Resource:
               - !GetAtt DummyAppFunction.Arn
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt NotificationTopic.TopicName
+        - Statement:
+            Effect: Allow
+            Action:
+              - logs:FilterLogEvents
+            Resource: "*"
       Events:
         GetIncidents:
           Type: HttpApi
@@ -164,6 +180,12 @@ Resources:
           Type: HttpApi
           Properties:
             Path: /incidents/{id}
+            Method: GET
+            ApiId: !Ref RCRADashboardAPI
+        GetIncidentLogs:
+          Type: HttpApi
+          Properties:
+            Path: /incidents/{id}/logs
             Method: GET
             ApiId: !Ref RCRADashboardAPI
         GetStatistics:
@@ -196,6 +218,24 @@ Resources:
             Path: /remediate
             Method: POST
             ApiId: !Ref RCRADashboardAPI
+        GetCriticalFunctions:
+          Type: HttpApi
+          Properties:
+            Path: /config/critical-functions
+            Method: GET
+            ApiId: !Ref RCRADashboardAPI
+        UpdateCriticalFunctions:
+          Type: HttpApi
+          Properties:
+            Path: /config/critical-functions
+            Method: POST
+            ApiId: !Ref RCRADashboardAPI
+        ResolveIncident:
+          Type: HttpApi
+          Properties:
+            Path: /resolve
+            Method: POST
+            ApiId: !Ref RCRADashboardAPI
 
   RCRADashboardAPI:
     Type: AWS::Serverless::HttpApi
@@ -208,6 +248,7 @@ Resources:
           - "*"
         AllowMethods:
           - GET
+          - POST
           - OPTIONS
 
   RCRAStateMachine:

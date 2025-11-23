@@ -13,12 +13,14 @@ The RCRA (Root Cause & Remediation Assistant) system now includes **intelligent 
 **Problem**: Lambda function times out before completing execution.
 
 **Auto-Remediation**:
+
 - Detects timeout patterns in error logs
 - Automatically increases Lambda timeout configuration
 - Doubles current timeout (up to AWS max of 900 seconds)
 - Updates function configuration in real-time
 
 **Example**:
+
 ```
 Error: "Lambda timeout - Operation took too long"
 Action: Timeout increased from 30s → 60s
@@ -33,12 +35,14 @@ Time Saved: 15-30 minutes of manual configuration
 **Problem**: Lambda function runs out of allocated memory.
 
 **Auto-Remediation**:
+
 - Monitors memory usage patterns
 - Automatically increases memory allocation
 - Doubles current memory (up to AWS max of 10,240 MB)
 - Adjusts CPU allocation proportionally
 
 **Example**:
+
 ```
 Error: "OutOfMemoryError - Peak usage: 510MB/512MB"
 Action: Memory increased from 512MB → 1024MB
@@ -53,12 +57,14 @@ Time Saved: 20-40 minutes of investigation and deployment
 **Problem**: All database connections are busy or timed out.
 
 **Auto-Remediation**:
+
 - Detects connection pool issues
 - Triggers Lambda function restart
 - Resets all connection pools
 - Clears stuck connections
 
 **Example**:
+
 ```
 Error: "ConnectionPoolExhausted - 50/50 connections busy"
 Action: Lambda restarted via environment variable update
@@ -73,12 +79,14 @@ Time Saved: 10-20 minutes of manual restart
 **Problem**: API Gateway rate limits exceeded.
 
 **Auto-Remediation**:
+
 - Creates CloudWatch alarms
 - Sends notifications to support team
 - Logs recommendation for quota increase
 - (Can be enhanced to auto-submit AWS Support tickets)
 
 **Example**:
+
 ```
 Error: "TooManyRequestsException - 12,500 req/s on 10,000 limit"
 Action: Alarm created + notification sent
@@ -93,12 +101,14 @@ Time Saved: Immediate awareness vs. customer complaints
 **Problem**: Cache entries contain invalid or stale data.
 
 **Auto-Remediation**:
+
 - Detects cache hit rate drops
 - Marks cache for flush (requires approval for production)
 - Can auto-flush in non-production environments
 - Triggers cache rebuild process
 
 **Example**:
+
 ```
 Error: "CacheCorruptionException - Hit rate dropped from 95% to 12%"
 Action: Cache flush scheduled with approval
@@ -113,12 +123,14 @@ Time Saved: Immediate diagnosis vs. hours of debugging
 **Problem**: Service health endpoint not responding.
 
 **Auto-Remediation**:
+
 - Detects consecutive health check failures
 - Automatically restarts the service/function
 - Monitors post-restart health
 - Escalates if restart doesn't fix issue
 
 **Example**:
+
 ```
 Error: "HealthCheckFailed - Last success: 5m ago"
 Action: Service restarted
@@ -133,12 +145,14 @@ Time Saved: 5-15 minutes of manual intervention
 **Problem**: Messages failing processing and moving to DLQ.
 
 **Auto-Remediation**:
+
 - Analyzes DLQ messages
 - Identifies fixable vs. corrupt messages
 - Can replay messages after fixing root cause
 - Logs unfixable messages for manual review
 
 **Example**:
+
 ```
 Error: "MessageProcessingFailed - 3/3 retries exhausted"
 Action: Message analyzed, root cause fixed, replay scheduled
@@ -230,13 +244,13 @@ critical_functions = [
 
 ### Average Resolution Time Comparison
 
-| Issue Type | Manual Resolution | Auto-Remediation | Time Saved |
-|------------|-------------------|------------------|------------|
-| Lambda Timeout | 15-30 minutes | 10 seconds | **97%** |
-| Memory Issues | 20-40 minutes | 10 seconds | **98%** |
-| Connection Pool | 10-20 minutes | 5 seconds | **99%** |
-| Cache Corruption | 2-4 hours | 1 minute | **99%** |
-| Health Check | 5-15 minutes | 30 seconds | **95%** |
+| Issue Type       | Manual Resolution | Auto-Remediation | Time Saved |
+| ---------------- | ----------------- | ---------------- | ---------- |
+| Lambda Timeout   | 15-30 minutes     | 10 seconds       | **97%**    |
+| Memory Issues    | 20-40 minutes     | 10 seconds       | **98%**    |
+| Connection Pool  | 10-20 minutes     | 5 seconds        | **99%**    |
+| Cache Corruption | 2-4 hours         | 1 minute         | **99%**    |
+| Health Check     | 5-15 minutes      | 30 seconds       | **95%**    |
 
 ### Cost Savings (Monthly Estimate)
 
@@ -333,10 +347,10 @@ aws stepfunctions list-executions \
 def remediate_custom_error(log_group, raw_message, analysis):
     """Remediate custom error pattern"""
     print("[REMEDIATION] Detected custom error")
-    
+
     # Your remediation logic here
     # e.g., restart service, clear cache, scale up, etc.
-    
+
     return {
         "autoRemediationEligible": True,
         "remediationActionTaken": "AUTO_REMEDIATED",
@@ -357,26 +371,31 @@ def remediate_custom_error(log_group, raw_message, analysis):
 ## 📋 Best Practices
 
 ### 1. Start Conservative
+
 - Begin with non-critical functions only
 - Enable auto-remediation for well-understood issues
 - Gradually expand to more scenarios
 
 ### 2. Monitor Closely
+
 - Review auto-remediation actions daily initially
 - Check for false positives
 - Adjust patterns as needed
 
 ### 3. Document Everything
+
 - Log all actions to DynamoDB
 - Send SNS notifications for audit trail
 - Keep remediation patterns documented
 
 ### 4. Test Thoroughly
+
 - Use dummy app to test all scenarios
 - Test in non-production first
 - Verify rollback procedures work
 
 ### 5. Human Oversight
+
 - Critical functions require manual approval
 - Review trends weekly
 - Adjust eligibility criteria based on results
@@ -418,12 +437,14 @@ If auto-remediation doesn't fix the issue:
 ### Case Study: E-Commerce Platform
 
 **Before RCRA**:
+
 - 200 Lambda timeout incidents/month
 - Average resolution time: 25 minutes
 - Total support time: 83 hours/month
 - Customer impact: 15 minute average downtime
 
 **After RCRA**:
+
 - Same 200 incidents
 - Auto-remediation: 190 incidents (95%)
 - Average resolution time: 15 seconds
@@ -462,4 +483,5 @@ Planned features:
 ---
 
 **Remember**: Auto-remediation is a powerful tool, but human oversight is still essential. Use it to augment your team, not replace them!
+
 

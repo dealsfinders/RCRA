@@ -11,6 +11,7 @@ Every time RCRA detects an error and performs auto-remediation, you'll receive a
 **Subject**: `[RCRA] ✅ AUTO-FIXED: MEDIUM - inc-abc123`
 
 **Email Body**:
+
 ```
 ╔══════════════════════════════════════════════════════════════════╗
 ║          RCRA - Root Cause & Remediation Alert                   ║
@@ -29,8 +30,8 @@ AI ANALYSIS
 Summary: Lambda function timed out due to insufficient timeout setting
 
 Root Cause:
-The configured timeout value of 30 seconds was too low for the workload 
-being processed by the Lambda function, causing it to time out before 
+The configured timeout value of 30 seconds was too low for the workload
+being processed by the Lambda function, causing it to time out before
 completing execution.
 
 AUTO-REMEDIATION STATUS
@@ -65,7 +66,7 @@ Tags: Lambda, Timeout, Performance, Configuration
 
 RAW ERROR LOG
 =============
-ERROR: Lambda timeout - Operation took too long to complete. 
+ERROR: Lambda timeout - Operation took too long to complete.
 Current timeout setting is insufficient for this workload...
 
 ══════════════════════════════════════════════════════════════════
@@ -81,6 +82,7 @@ http://localhost:8080/index.html
 **Subject**: `[RCRA] ⚠️ AUTO-FIX FAILED: HIGH - inc-def456`
 
 **Email Body**:
+
 ```
 ╔══════════════════════════════════════════════════════════════════╗
 ║          RCRA - Root Cause & Remediation Alert                   ║
@@ -130,6 +132,7 @@ SUGGESTED REMEDIATION STEPS (from AI Analysis)
 **Subject**: `[RCRA] 👤 APPROVAL NEEDED: CRITICAL - inc-ghi789`
 
 **Email Body**:
+
 ```
 ╔══════════════════════════════════════════════════════════════════╗
 ║          RCRA - Root Cause & Remediation Alert                   ║
@@ -157,7 +160,7 @@ Action Taken: MANUAL_APPROVAL_REQUIRED
 
 👤 MANUAL APPROVAL REQUIRED
 
-Details: Function production-payment-processor is marked as critical 
+Details: Function production-payment-processor is marked as critical
 and requires manual approval for memory changes.
 
 This is a critical function that requires human approval before remediation.
@@ -180,6 +183,7 @@ SUGGESTED REMEDIATION STEPS (from AI Analysis)
 **Subject**: `[RCRA] 📊 NEW INCIDENT: LOW - inc-jkl012`
 
 **Email Body**:
+
 ```
 ╔══════════════════════════════════════════════════════════════════╗
 ║          RCRA - Root Cause & Remediation Alert                   ║
@@ -207,7 +211,7 @@ Action Taken: ANALYSIS_ONLY
 
 📊 ANALYSIS COMPLETED
 
-Details: API throttling detected. CloudWatch alarm created. 
+Details: API throttling detected. CloudWatch alarm created.
 Recommend reviewing quota limits.
 
 No automatic remediation was performed. Please review the suggested steps below.
@@ -238,24 +242,28 @@ Tags: API Gateway, Throttling, Rate Limiting
 ### Information Included
 
 1. **Incident Details**
+
    - Unique incident ID
    - Timestamp
    - Severity level
    - Source log location
 
 2. **AI Analysis**
+
    - Human-readable summary
    - Root cause explanation
    - Suggested remediation steps
    - Relevant tags
 
 3. **Auto-Remediation Status**
+
    - Whether auto-fix was attempted
    - Action taken
    - AWS resources modified
    - Success/failure details
 
 4. **Raw Error Log**
+
    - First 500 characters of the error
    - Helps with quick diagnosis
 
@@ -384,23 +392,27 @@ aws sns unsubscribe --subscription-arn <SUBSCRIPTION_ARN>
 ## 🎯 What To Do When You Receive an Email
 
 ### ✅ AUTO-FIXED
+
 - **Action**: None required
 - **Optional**: Review to understand what was fixed
 - **Archive** for your records
 
 ### ⚠️ AUTO-FIX FAILED
+
 - **Action**: Immediate - review and fix manually
 - **Check**: Dashboard for full details
 - **Investigate**: Why auto-fix failed
 - **Update**: Remediation logic if needed
 
 ### 👤 APPROVAL NEEDED
+
 - **Action**: Review the suggested remediation
 - **Approve**: If changes are safe
 - **Manually apply**: The recommended fix
 - **Monitor**: Post-fix behavior
 
 ### 📊 NEW INCIDENT
+
 - **Action**: Review suggested steps
 - **Decide**: If manual intervention needed
 - **Monitor**: If it recurs
@@ -409,4 +421,5 @@ aws sns unsubscribe --subscription-arn <SUBSCRIPTION_ARN>
 ---
 
 Remember: Email notifications keep you informed without overwhelming you. Auto-remediation handles the routine, you handle the exceptional! 📧✨
+
 

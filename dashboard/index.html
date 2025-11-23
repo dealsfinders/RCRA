@@ -82,6 +82,22 @@
             background: #5568d3;
         }
 
+        .secondary-button {
+            padding: 10px 16px;
+            background: #111827;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .secondary-button:hover {
+            background: #1f2937;
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -100,6 +116,15 @@
         .stat-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .stat-card.clickable {
+            cursor: pointer;
+            border: 2px solid #e0e7ff;
+        }
+
+        .stat-card.clickable:hover {
+            border-color: #667eea;
         }
 
         .stat-card h3 {
@@ -253,6 +278,77 @@
         .remediation-NONE {
             background: #9ca3af;
             color: white;
+        }
+
+        .remediation-MANUAL_TRIGGERED {
+            background: #111827;
+            color: white;
+        }
+
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-block;
+            margin-left: 8px;
+        }
+
+        .status-OPEN {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fbbf24;
+        }
+
+        .status-RESOLVED {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #10b981;
+        }
+
+        .status-IN_PROGRESS {
+            background: #e0e7ff;
+            color: #312e81;
+            border: 1px solid #6366f1;
+        }
+
+        .occurrence-badge {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 700;
+            margin-left: 8px;
+        }
+
+        .resolve-button {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .resolve-button:hover {
+            background: #059669;
+            transform: scale(1.05);
+        }
+
+        .resolve-button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .resolve-button.secondary {
+            background: #e5e7eb;
+            color: #6b7280;
+            border: 1px solid #d1d5db;
         }
 
         .incident-summary {
@@ -467,6 +563,55 @@
             const [selectedIncident, setSelectedIncident] = useState(null);
             const [severityFilter, setSeverityFilter] = useState('ALL');
             const [refreshing, setRefreshing] = useState(false);
+            const [showEligibleModal, setShowEligibleModal] = useState(false);
+            const [eligibleIncidents, setEligibleIncidents] = useState([]);
+            const [remediatingId, setRemediatingId] = useState(null);
+            const [showConfig, setShowConfig] = useState(false);
+            const defaultConfig = {
+                lambdaTimeout: true,
+                outOfMemory: true,
+                throttling: false,
+                connectionPool: false,
+                cacheCorruption: false
+            };
+            const [config, setConfig] = useState(() => {
+                const saved = localStorage.getItem('rcraAutoRemediationConfig');
+                return saved ? JSON.parse(saved) : defaultConfig;
+            });
+            const [logModalIncident, setLogModalIncident] = useState(null);
+            const [logEvents, setLogEvents] = useState([]);
+            const [logLoading, setLogLoading] = useState(false);
+            const [logError, setLogError] = useState(null);
+
+            const detectScenario = (incident) => {
+                const text = `${incident.rootCause || ''} ${incident.summary || ''}`.toLowerCase();
+                if (text.includes('timeout') || text.includes('timed out')) return 'lambdaTimeout';
+                if (text.includes('memory') || text.includes('out of memory') || text.includes('oom')) return 'outOfMemory';
+                if (text.includes('throttle') || text.includes('rate limit')) return 'throttling';
+                if (text.includes('connection') && text.includes('pool')) return 'connectionPool';
+                if (text.includes('cache')) return 'cacheCorruption';
+                return null;
+            };
+
+            const fetchLogs = async (incident) => {
+                if (!apiEndpoint) return;
+                setLogLoading(true);
+                setLogError(null);
+                setLogEvents([]);
+                try {
+                    const res = await fetch(`${apiEndpoint}/incidents/${incident.incidentId}/logs?limit=50`);
+                    const data = await res.json();
+                    if (!res.ok || data.error) {
+                        throw new Error(data.error || 'Failed to fetch logs');
+                    }
+                    setLogEvents(data.events || []);
+                    setLogModalIncident(incident);
+                } catch (err) {
+                    setLogError(err.message);
+                } finally {
+                    setLogLoading(false);
+                }
+            };
 
             const saveApiEndpoint = () => {
                 localStorage.setItem('rcraApiEndpoint', tempEndpoint);
@@ -505,6 +650,74 @@
                 setTimeout(() => setRefreshing(false), 1000);
             };
 
+            const openEligibleModal = () => {
+                const eligible = incidents.filter(inc => inc.remediationEligible);
+                setEligibleIncidents(eligible);
+                setShowEligibleModal(true);
+            };
+
+            const remediateIncident = async (incident) => {
+                if (!apiEndpoint) return;
+                if (['RESOLVED', 'IN_PROGRESS'].includes(incident.status)) return;
+                if (!confirm(`Trigger remediation for ${incident.incidentId}?`)) return;
+
+                const scenario = detectScenario(incident);
+                if (scenario && config.hasOwnProperty(scenario) && !config[scenario]) {
+                    alert('Auto-remediation is disabled for this scenario. Enable it in Configuration to proceed.');
+                    return;
+                }
+
+                setRemediatingId(incident.incidentId);
+                try {
+                    const res = await fetch(`${apiEndpoint}/remediate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            incidentId: incident.incidentId,
+                            action: 'dashboard_manual_trigger',
+                            triggeredBy: 'DASHBOARD_USER'
+                        })
+                    });
+
+                    const data = await res.json();
+                    if (!res.ok || data.error || data.success === false) {
+                        throw new Error(data.error || 'Remediation failed');
+                    }
+
+                    // Update local state to reflect in-progress status
+                    setIncidents(prev => prev.map(inc => 
+                        inc.incidentId === incident.incidentId 
+                            ? { ...inc, status: 'IN_PROGRESS', remediationAction: 'MANUAL_TRIGGERED_IN_PROGRESS', remediationEligible: false }
+                            : inc
+                    ));
+
+                    setEligibleIncidents(prev => prev.map(inc => 
+                        inc.incidentId === incident.incidentId 
+                            ? { ...inc, status: 'IN_PROGRESS', remediationAction: 'MANUAL_TRIGGERED_IN_PROGRESS', remediationEligible: false }
+                            : inc
+                    ));
+
+                    // Adjust eligible count; leave open/resolved unchanged until completion
+                    setStatistics(prev => {
+                        if (!prev) return prev;
+                        const eligible = Math.max(0, (prev.overview?.remediationEligible || 0) - 1);
+                        return {
+                            ...prev,
+                            overview: {
+                                ...prev.overview,
+                                remediationEligible: eligible
+                            }
+                        };
+                    });
+
+                    alert('Remediation triggered. Ticket set to IN_PROGRESS.');
+                } catch (err) {
+                    alert(`Failed to remediate: ${err.message}`);
+                } finally {
+                    setRemediatingId(null);
+                }
+            };
+
             useEffect(() => {
                 if (apiEndpoint) {
                     fetchData();
@@ -535,6 +748,7 @@
                                 onChange={(e) => setTempEndpoint(e.target.value)}
                             />
                             <button onClick={saveApiEndpoint}>Save</button>
+                            <button className="secondary-button" onClick={() => setShowConfig(true)}>Configuration</button>
                         </div>
                     </div>
 
@@ -564,10 +778,11 @@
                                         <h3>Last 24 Hours</h3>
                                         <div className="stat-value">{statistics.overview.incidents24h}</div>
                                     </div>
-                                    <div className="stat-card">
+                                    <div className="stat-card clickable" onClick={openEligibleModal} title="View auto-remediation eligible tickets">
                                         <div className="stat-icon">🎯</div>
                                         <h3>Auto-Remediation Eligible</h3>
                                         <div className="stat-value">{statistics.overview.remediationEligible}</div>
+                                        <div className="header-subtitle" style={{marginTop: '5px'}}>Tap to view eligible tickets</div>
                                     </div>
                                     <div className="stat-card">
                                         <div className="stat-icon">📈</div>
@@ -622,11 +837,40 @@
                         🔄
                     </button>
 
+                    {showEligibleModal && (
+                        <RemediationEligibleModal
+                            incidents={eligibleIncidents}
+                            onClose={() => setShowEligibleModal(false)}
+                            onRemediate={remediateIncident}
+                            remediatingId={remediatingId}
+                            setSelectedIncident={setSelectedIncident}
+                        />
+                    )}
+
+                    {showConfig && (
+                        <ConfigModal 
+                            config={config}
+                            setConfig={setConfig}
+                            onClose={() => setShowConfig(false)}
+                        />
+                    )}
+
                     {selectedIncident && (
                         <IncidentModal 
                             incident={selectedIncident}
                             onClose={() => setSelectedIncident(null)}
                             apiEndpoint={apiEndpoint}
+                            fetchLogs={fetchLogs}
+                        />
+                    )}
+
+                    {logModalIncident && (
+                        <LogsModal 
+                            incident={logModalIncident}
+                            events={logEvents}
+                            loading={logLoading}
+                            error={logError}
+                            onClose={() => { setLogModalIncident(null); setLogEvents([]); setLogError(null); }}
                         />
                     )}
                 </div>
@@ -637,7 +881,23 @@
         function DashboardTab({ statistics, setSelectedIncident }) {
             return (
                 <div>
-                    <h2>Severity Breakdown</h2>
+                    <h2>Ticket Status Overview</h2>
+                    <div className="stats-grid" style={{marginTop: '20px', gridTemplateColumns: 'repeat(2, 1fr)'}}>
+                        <div className="stat-card" style={{background: '#fef3c7'}}>
+                            <h3>🔓 Open Tickets</h3>
+                            <div className="stat-value" style={{color: '#92400e'}}>
+                                {statistics.overview.openTickets || 0}
+                            </div>
+                        </div>
+                        <div className="stat-card" style={{background: '#d1fae5'}}>
+                            <h3>✅ Resolved Tickets</h3>
+                            <div className="stat-value" style={{color: '#065f46'}}>
+                                {statistics.overview.resolvedTickets || 0}
+                            </div>
+                        </div>
+                    </div>
+
+                    <h2 style={{marginTop: '30px'}}>Severity Breakdown</h2>
                     <div className="stats-grid" style={{marginTop: '20px'}}>
                         {Object.entries(statistics.severityBreakdown).map(([severity, count]) => (
                             <div key={severity} className="stat-card">
@@ -664,6 +924,9 @@
                                     {incident.ticketNumber && incident.ticketNumber !== 'N/A' && (
                                         <div style={{fontSize: '11px', color: '#667eea', fontWeight: '600', marginBottom: '3px'}}>
                                             🎫 {incident.ticketNumber}
+                                            <span className={`status-badge status-${incident.status || 'OPEN'}`}>
+                                                {incident.status || 'OPEN'}
+                                            </span>
                                         </div>
                                     )}
                                     <div style={{fontWeight: '600'}}>{incident.summary}</div>
@@ -682,9 +945,11 @@
                                         </div>
                                     )}
                                 </div>
-                                <span className={`severity-badge severity-${incident.severity}`}>
-                                    {incident.severity}
-                                </span>
+                                <div style={{textAlign: 'right'}}>
+                                    <span className={`severity-badge severity-${incident.severity}`}>
+                                        {incident.severity}
+                                    </span>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -735,6 +1000,14 @@
                                             {incident.ticketNumber && incident.ticketNumber !== 'N/A' && (
                                                 <div style={{fontSize: '13px', color: '#667eea', fontWeight: '600', marginTop: '3px'}}>
                                                     🎫 {incident.ticketNumber}
+                                                    <span className={`status-badge status-${incident.status || 'OPEN'}`}>
+                                                        {incident.status || 'OPEN'}
+                                                    </span>
+                                                    {incident.occurrenceCount && incident.occurrenceCount > 1 && (
+                                                        <span className="occurrence-badge">
+                                                            🔄 {incident.occurrenceCount}x
+                                                        </span>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -742,16 +1015,26 @@
                                             {incident.severity}
                                         </span>
                                     </div>
-                                    <div className="incident-summary">{incident.summary}</div>
-                                    <div className="incident-timestamp">
-                                        {new Date(incident.timestamp).toLocaleString()} • {incident.logGroup}
-                                    </div>
-                                    <div style={{color: '#666', fontSize: '14px', marginTop: '8px'}}>
-                                        {incident.rootCause}
-                                    </div>
-                                    {incident.remediationAction && incident.remediationAction !== 'NONE' && (
-                                        <div style={{marginTop: '8px'}}>
-                                            <span className={`remediation-badge remediation-${incident.remediationAction}`}>
+                                            <div className="incident-summary">{incident.summary}</div>
+                                            <div className="incident-timestamp">
+                                                {new Date(incident.timestamp).toLocaleString()} • {incident.logGroup}
+                                            </div>
+                                            <div style={{color: '#666', fontSize: '14px', marginTop: '8px'}}>
+                                                {incident.rootCause}
+                                            </div>
+                                            {incident.status === 'IN_PROGRESS' && (
+                                                <div style={{marginTop: '10px'}}>
+                                                    <button 
+                                                        className="filter-btn"
+                                                        onClick={(e) => { e.stopPropagation(); fetchLogs(incident); }}
+                                                    >
+                                                        View Logs
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {incident.remediationAction && incident.remediationAction !== 'NONE' && (
+                                                <div style={{marginTop: '8px'}}>
+                                                    <span className={`remediation-badge remediation-${incident.remediationAction}`}>
                                                 {incident.remediationAction === 'AUTO_REMEDIATED' ? '✅ AUTO-FIXED' :
                                                  incident.remediationAction === 'FAILED' ? '⚠️ FAILED' :
                                                  incident.remediationAction === 'MANUAL_APPROVAL_REQUIRED' ? '👤 APPROVAL NEEDED' :
@@ -775,10 +1058,147 @@
             );
         }
 
+        // Auto-remediation eligible modal
+        function RemediationEligibleModal({ incidents, onClose, onRemediate, remediatingId, setSelectedIncident }) {
+            const openDetails = (incident) => {
+                setSelectedIncident(incident);
+                onClose();
+            };
+
+            return (
+                <div className="modal" onClick={onClose}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <div>
+                                <h2>Auto-Remediation Eligible ({incidents.length})</h2>
+                                <div className="header-subtitle">Select a ticket to trigger remediation immediately.</div>
+                            </div>
+                            <button className="modal-close" onClick={onClose}>×</button>
+                        </div>
+
+                        {incidents.length === 0 ? (
+                            <div style={{textAlign: 'center', padding: '20px', color: '#666'}}>
+                                No tickets are currently marked as auto-remediation eligible.
+                            </div>
+                        ) : (
+                            <div className="incident-list">
+                                {incidents.map(incident => (
+                                    <div key={incident.incidentId} className="incident-card">
+                                        <div className="incident-header">
+                                            <div>
+                                                <div className="incident-id">{incident.incidentId}</div>
+                                                <div style={{marginTop: '4px'}}>
+                                                    <span className={`severity-badge severity-${incident.severity}`}>
+                                                        {incident.severity}
+                                                    </span>
+                                                    <span className={`status-badge status-${incident.status || 'OPEN'}`} style={{marginLeft: '6px'}}>
+                                                        {incident.status || 'OPEN'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            {incident.ticketNumber && incident.ticketNumber !== 'N/A' && (
+                                                <div style={{fontSize: '12px', color: '#667eea', fontWeight: '700'}}>
+                                                    🎫 {incident.ticketNumber}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="incident-summary">{incident.summary}</div>
+                                        <div className="incident-timestamp">
+                                            {new Date(incident.timestamp).toLocaleString()} • {incident.logGroup}
+                                        </div>
+                                        <div style={{color: '#555', fontSize: '14px', marginTop: '6px'}}>
+                                            {incident.rootCause}
+                                        </div>
+                                        <div style={{display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap'}}>
+                                            <button 
+                                                className={`resolve-button ${incident.status === 'IN_PROGRESS' ? 'secondary' : ''}`}
+                                                onClick={() => onRemediate(incident)}
+                                                disabled={
+                                                    remediatingId === incident.incidentId ||
+                                                    incident.status === 'RESOLVED' ||
+                                                    incident.status === 'IN_PROGRESS'
+                                                }
+                                            >
+                                                {incident.status === 'IN_PROGRESS'
+                                                    ? '⏳ In progress'
+                                                    : remediatingId === incident.incidentId
+                                                        ? '⏳ Remediating...'
+                                                        : '🚀 Remediate now'}
+                                            </button>
+                                            <button 
+                                                className="filter-btn" 
+                                                onClick={() => openDetails(incident)}
+                                            >
+                                                View details
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // Configuration modal for auto-remediation scenarios
+        function ConfigModal({ config, setConfig, onClose }) {
+            const scenarioLabels = {
+                lambdaTimeout: "Lambda timeout",
+                outOfMemory: "Out of memory",
+                throttling: "Throttling / Rate limit",
+                connectionPool: "Connection pool exhaustion",
+                cacheCorruption: "Cache corruption/invalid cache"
+            };
+
+            const toggle = (key) => {
+                const next = { ...config, [key]: !config[key] };
+                setConfig(next);
+                localStorage.setItem('rcraAutoRemediationConfig', JSON.stringify(next));
+            };
+
+            return (
+                <div className="modal" onClick={onClose}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <div>
+                                <h2>Auto-Remediation Configuration</h2>
+                                <div className="header-subtitle">Enable scenarios that can self-heal when detected.</div>
+                            </div>
+                            <button className="modal-close" onClick={onClose}>×</button>
+                        </div>
+                        <div className="incident-list">
+                            {Object.entries(scenarioLabels).map(([key, label]) => (
+                                <div key={key} className="incident-card" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                    <div>
+                                        <div className="incident-summary">{label}</div>
+                                        <div className="incident-timestamp" style={{marginTop: '4px'}}>
+                                            {config[key] ? 'Eligible for auto-remediation when detected.' : 'Will require manual remediation.'}
+                                        </div>
+                                    </div>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={!!config[key]} 
+                                        onChange={() => toggle(key)}
+                                        style={{width: '18px', height: '18px'}}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <div style={{marginTop: '10px', color: '#666', fontSize: '13px'}}>
+                            These preferences are stored locally in your browser and checked before triggering remediation.
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         // Incident Detail Modal
-        function IncidentModal({ incident, onClose, apiEndpoint }) {
+        function IncidentModal({ incident, onClose, apiEndpoint, fetchLogs }) {
             const [details, setDetails] = useState(null);
             const [loading, setLoading] = useState(true);
+            const [resolving, setResolving] = useState(false);
+            const [showRelated, setShowRelated] = useState(false);
 
             useEffect(() => {
                 const fetchDetails = async () => {
@@ -794,6 +1214,33 @@
                 };
                 fetchDetails();
             }, [incident.incidentId]);
+            
+            const handleResolve = async () => {
+                if (!confirm('Mark this incident as resolved?')) return;
+                
+                setResolving(true);
+                try {
+                    const res = await fetch(`${apiEndpoint}/resolve`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            incidentId: incident.incidentId,
+                            resolvedBy: 'DASHBOARD_USER'
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        alert('Incident marked as resolved!');
+                        window.location.reload(); // Refresh to show updated status
+                    } else {
+                        alert('Failed to resolve incident: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (err) {
+                    alert('Failed to resolve incident: ' + err.message);
+                } finally {
+                    setResolving(false);
+                }
+            };
 
             return (
                 <div className="modal" onClick={onClose}>
@@ -804,9 +1251,59 @@
                                 {details && details.ticketNumber && details.ticketNumber !== 'N/A' && (
                                     <div style={{fontSize: '16px', color: '#667eea', fontWeight: '700', marginBottom: '5px'}}>
                                         🎫 Ticket: {details.ticketNumber}
+                                        <span className={`status-badge status-${details.status || 'OPEN'}`} style={{marginLeft: '10px'}}>
+                                            {details.status || 'OPEN'}
+                                        </span>
+                                        {details.occurrences && details.occurrences.length > 1 && (
+                                            <span className="occurrence-badge" style={{marginLeft: '5px'}}>
+                                                🔄 {details.occurrences.length}x
+                                            </span>
+                                        )}
                                     </div>
                                 )}
                                 <div className="incident-id">{incident.incidentId}</div>
+                                {details && details.status === 'OPEN' && (
+                                    <button 
+                                        className="resolve-button" 
+                                        onClick={handleResolve}
+                                        disabled={resolving}
+                                        style={{marginTop: '10px'}}
+                                    >
+                                        {resolving ? '⏳ Resolving...' : '✅ Mark as Resolved'}
+                                    </button>
+                                )}
+                                {details && details.status === 'IN_PROGRESS' && (
+                                    <div style={{marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+                                        <button 
+                                            className="filter-btn"
+                                            onClick={() => fetchLogs(incident)}
+                                        >
+                                            View Logs
+                                        </button>
+                                        <button 
+                                            className="resolve-button" 
+                                            onClick={handleResolve}
+                                            disabled={resolving}
+                                        >
+                                            {resolving ? '⏳ Resolving...' : '✅ Mark as Resolved'}
+                                        </button>
+                                    </div>
+                                )}
+                                {details && (
+                                    <div style={{marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+                                        <button 
+                                            className="filter-btn"
+                                            onClick={() => setShowRelated(!showRelated)}
+                                        >
+                                            {showRelated ? 'Hide related incidents' : 'Related incidents'}
+                                        </button>
+                                    </div>
+                                )}
+                                {details && details.status === 'RESOLVED' && (
+                                    <div style={{marginTop: '10px', color: '#065f46', fontSize: '14px'}}>
+                                        ✅ Resolved by {details.resolvedBy || 'Unknown'} at {details.resolvedAt ? new Date(details.resolvedAt).toLocaleString() : 'Unknown time'}
+                                    </div>
+                                )}
                             </div>
                             <button className="modal-close" onClick={onClose}>×</button>
                         </div>
@@ -865,9 +1362,101 @@
                                         </div>
                                     </div>
                                 )}
+
+                                {showRelated && (
+                                    <div className="detail-section">
+                                        <h3>🔁 Related Incidents (same signature)</h3>
+                                        {details.relatedIncidents && details.relatedIncidents.length > 0 ? (
+                                            <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                                                {details.relatedIncidents.map((rel) => (
+                                                    <div key={rel.incidentId} style={{padding: '10px', border: '1px solid #e5e7eb', borderRadius: '8px', background: '#f9fafb'}}>
+                                                        <div style={{fontSize: '12px', color: '#6b7280'}}>
+                                                            {rel.timestamp ? new Date(rel.timestamp).toLocaleString() : ''} • {rel.status || 'UNKNOWN'}
+                                                        </div>
+                                                        <div style={{fontWeight: '700', color: '#667eea', marginTop: '2px'}}>
+                                                            {rel.ticketNumber || 'N/A'}
+                                                        </div>
+                                                        <div style={{fontSize: '13px', color: '#111827', marginTop: '4px'}}>
+                                                            {rel.incidentId}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div style={{color: '#6b7280'}}>No related incidents found.</div>
+                                        )}
+                                    </div>
+                                )}
+                                
+                                {details.occurrences && details.occurrences.length > 1 && (
+                                    <div className="detail-section">
+                                        <h3>🔄 Error Occurrence Timeline (Last 24h)</h3>
+                                        <div style={{fontSize: '14px', color: '#666', marginBottom: '10px'}}>
+                                            This error occurred <strong>{details.occurrences.length}</strong> times in the last 24 hours
+                                        </div>
+                                        <div style={{maxHeight: '200px', overflowY: 'auto', background: '#f9f9f9', padding: '10px', borderRadius: '8px'}}>
+                                            {details.occurrences.map((occ, idx) => (
+                                                <div key={idx} style={{
+                                                    padding: '8px', 
+                                                    borderLeft: '3px solid #667eea', 
+                                                    marginBottom: '8px',
+                                                    background: 'white',
+                                                    borderRadius: '4px'
+                                                }}>
+                                                    <div style={{fontSize: '12px', color: '#667eea', fontWeight: '600'}}>
+                                                        🎫 {occ.ticketNumber || 'N/A'}
+                                                        <span className={`status-badge status-${occ.status || 'OPEN'}`} style={{marginLeft: '5px'}}>
+                                                            {occ.status || 'OPEN'}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{fontSize: '12px', color: '#999', marginTop: '2px'}}>
+                                                        {new Date(occ.timestamp).toLocaleString()}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div className="error">Failed to load incident details</div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // Logs modal
+        function LogsModal({ incident, events, loading, error, onClose }) {
+            return (
+                <div className="modal" onClick={onClose}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <div>
+                                <h2>Log Events</h2>
+                                <div className="incident-id">{incident.incidentId}</div>
+                                <div className="incident-timestamp">{incident.logGroup}</div>
+                            </div>
+                            <button className="modal-close" onClick={onClose}>×</button>
+                        </div>
+                        {loading ? (
+                            <div className="loading">Loading logs...</div>
+                        ) : error ? (
+                            <div className="error">Failed to load logs: {error}</div>
+                        ) : events.length === 0 ? (
+                            <div className="loading">No log events found.</div>
+                        ) : (
+                            <div style={{maxHeight: '70vh', overflowY: 'auto', background: '#f9fafb', padding: '10px', borderRadius: '8px'}}>
+                                {events.map((evt, idx) => (
+                                    <div key={idx} style={{marginBottom: '10px', padding: '10px', background: 'white', borderRadius: '6px', border: '1px solid #e5e7eb'}}>
+                                        <div style={{fontSize: '12px', color: '#6b7280'}}>
+                                            {evt.ingestionTime ? new Date(evt.ingestionTime).toLocaleString() : ''}
+                                            {evt.logStreamName && ` • ${evt.logStreamName}`}
+                                        </div>
+                                        <pre style={{whiteSpace: 'pre-wrap', marginTop: '4px', fontSize: '13px', color: '#111827'}}>{evt.message}</pre>
+                                    </div>
+                                ))}
+                            </div>
                         )}
                     </div>
                 </div>
@@ -879,4 +1468,3 @@
     </script>
 </body>
 </html>
-

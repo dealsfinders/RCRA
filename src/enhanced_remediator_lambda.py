@@ -6,9 +6,10 @@ Performs actual AWS operations to fix common issues automatically
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import boto3
+from boto3.dynamodb.conditions import Attr
 
 lambda_client = boto3.client("lambda")
 logs_client = boto3.client("logs")
@@ -42,6 +43,41 @@ def is_critical_function(log_group):
         return False
 
 
+def detect_scenario(raw_message, analysis):
+    """Identify scenario type from message/analysis to drive eligibility."""
+    text = f"{raw_message} {json.dumps(analysis)}".lower()
+    if "timeout" in text or "timed out" in text:
+        return "lambdaTimeout"
+    if "out of memory" in text or "oom" in text or "memory" in text:
+        return "outOfMemory"
+    if "throttle" in text or "rate limit" in text:
+        return "throttling"
+    if "connection" in text and "pool" in text:
+        return "connectionPool"
+    if "cache" in text and ("corrupt" in text or "invalid" in text):
+        return "cacheCorruption"
+    return "general"
+
+
+def get_recent_occurrence_count(error_signature, log_group):
+    """Count similar incidents in last 24h for recurrence detection."""
+    if not error_signature:
+        return 0
+    try:
+        now = datetime.utcnow()
+        cutoff = now - timedelta(hours=24)
+        cutoff_str = cutoff.isoformat() + "Z"
+        response = table.scan(
+            FilterExpression=Attr("ErrorSignature").eq(error_signature)
+            & Attr("LogGroup").eq(log_group)
+            & Attr("CreatedAt").gt(cutoff_str),
+        )
+        return len(response.get("Items", []))
+    except Exception as e:
+        print(f"[REMEDIATOR] Failed to check recurrence: {str(e)}")
+        return 0
+
+
 def handler(event, context):
     """
     Analyzes incidents and performs auto-remediation when possible.
@@ -52,10 +88,16 @@ def handler(event, context):
     analysis = event.get("analysis", {}).get("analysisResult", {})
     raw_message = event.get("rawLogMessage", "")
     log_group = event.get("logGroup", "")
+    severity = analysis.get("severity", "UNKNOWN")
+    auto_candidate = analysis.get("auto_remediation_candidate", False)
+    error_signature = analysis.get("summary") or raw_message[:120]
+    scenario = detect_scenario(raw_message, analysis)
+    recurrence = get_recent_occurrence_count(error_signature, log_group)
     
     print(f"[REMEDIATOR] Processing incident: {incident_id}")
-    print(f"[REMEDIATOR] Severity: {analysis.get('severity')}")
+    print(f"[REMEDIATOR] Severity: {severity}")
     print(f"[REMEDIATOR] Message: {raw_message[:200]}")
+    print(f"[REMEDIATOR] Scenario: {scenario}, recurrence(last24h): {recurrence}")
     
     # Check if this function is marked as critical
     if is_critical_function(log_group):
@@ -66,16 +108,35 @@ def handler(event, context):
                 "remediationActionTaken": "MANUAL_APPROVAL_REQUIRED",
                 "details": f"This function is marked as CRITICAL and requires manual approval before remediation. Please review the suggested remediation steps and apply manually after approval.",
                 "awsActions": [],
-                "criticalFunction": True
+                "criticalFunction": True,
+                "recurrenceCount": recurrence,
+                "scenario": scenario,
             }
         }
-    
+
+    # Eligibility engine: require recurrence or explicit model hint or high severity
+    eligible = (recurrence >= 2) or auto_candidate or severity in ("HIGH", "CRITICAL")
+    if not eligible:
+        event["remediationResult"] = {
+            "autoRemediationEligible": False,
+            "remediationActionTaken": "MANUAL_REVIEW_REQUIRED",
+            "details": (
+                "Auto-remediation skipped: not recurring/high-severity and model did not flag auto_remediation_candidate."
+            ),
+            "awsActions": [],
+            "recurrenceCount": recurrence,
+            "scenario": scenario,
+        }
+        return event
+
     # Determine if auto-remediation is possible
     remediation_result = {
-        "autoRemediationEligible": False,
-        "remediationActionTaken": "NONE",
-        "details": "",
-        "awsActions": []
+        "autoRemediationEligible": True,
+        "remediationActionTaken": "ANALYSIS_ONLY",
+        "details": "Eligible for auto-remediation; evaluating pattern-based runbooks.",
+        "awsActions": [],
+        "recurrenceCount": recurrence,
+        "scenario": scenario,
     }
     
     # Check for specific error patterns and remediate
@@ -99,6 +160,9 @@ def handler(event, context):
     
     else:
         remediation_result["details"] = "No automatic remediation pattern matched. Manual intervention required."
+
+    remediation_result.setdefault("recurrenceCount", recurrence)
+    remediation_result.setdefault("scenario", scenario)
     
     # Add remediation result to event
     event["remediationResult"] = remediation_result
@@ -427,4 +491,3 @@ def should_auto_remediate(function_name):
     
     # Default: allow auto-remediation for non-critical functions
     return True
-
