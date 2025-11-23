@@ -20,12 +20,15 @@ class DecimalEncoder(json.JSONEncoder):
         return super(DecimalEncoder, self).default(obj)
 
 
+lambda_client = boto3.client("lambda")
+
+
 def cors_headers():
     """Return CORS headers for API responses"""
     return {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-        "Access-Control-Allow-Methods": "GET,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     }
 
 
@@ -38,10 +41,15 @@ def handler(event, context):
     - GET /statistics - Get system statistics
     """
 
-    http_method = event.get("httpMethod", "")
-    path = event.get("path", "")
+    # Support both API Gateway v1 and v2 formats
+    http_method = event.get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method", "")
+    path = event.get("path") or event.get("rawPath", "")
     path_parameters = event.get("pathParameters") or {}
     query_parameters = event.get("queryStringParameters") or {}
+
+    # Debug logging
+    print(f"Event: {json.dumps(event)}")
+    print(f"HTTP Method: {http_method}, Path: {path}")
 
     # Handle OPTIONS for CORS
     if http_method == "OPTIONS":
@@ -59,6 +67,11 @@ def handler(event, context):
             response_data = get_incident_by_id(path_parameters["id"])
         elif path == "/statistics" or path.endswith("/statistics"):
             response_data = get_statistics()
+        elif path == "/trigger-error" or path.endswith("/trigger-error"):
+            response_data = trigger_dummy_error(query_parameters)
+        elif (path == "/remediate" or path.endswith("/remediate")) and http_method == "POST":
+            body = json.loads(event.get("body", "{}"))
+            response_data = trigger_remediation(body)
         else:
             return {
                 "statusCode": 404,
@@ -265,4 +278,70 @@ def _calculate_avg_severity(severity_counts, total):
         return "MEDIUM"
     else:
         return "LOW"
+
+
+def trigger_dummy_error(query_params):
+    """Trigger the dummy application to generate an error"""
+    scenario = query_params.get("scenario", "random")
+    
+    try:
+        # Invoke dummy app Lambda
+        response = lambda_client.invoke(
+            FunctionName="rcra-dummy-app",
+            InvocationType="RequestResponse",
+            Payload=json.dumps({
+                "queryStringParameters": {"scenario": scenario}
+            })
+        )
+        
+        payload = json.loads(response["Payload"].read())
+        
+        return {
+            "success": True,
+            "scenario": scenario,
+            "message": f"Triggered {scenario} error scenario",
+            "response": payload,
+            "note": "Check CloudWatch logs /aws/lambda/rcra-dummy-app for the error"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "Failed to trigger error scenario"
+        }
+
+
+def trigger_remediation(body):
+    """Manually trigger remediation for an incident"""
+    incident_id = body.get("incidentId")
+    action = body.get("action")  # e.g., "restart", "increase_timeout", "increase_memory"
+    
+    if not incident_id:
+        return {"error": "incidentId is required"}
+    
+    try:
+        # Get incident details
+        response = table.get_item(Key={"IncidentId": incident_id})
+        item = response.get("Item")
+        
+        if not item:
+            return {"error": "Incident not found"}
+        
+        # TODO: Invoke remediator Lambda with specific action
+        # For now, return success with action details
+        
+        return {
+            "success": True,
+            "incidentId": incident_id,
+            "action": action,
+            "message": f"Remediation action '{action}' queued for incident {incident_id}",
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
 

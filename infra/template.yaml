@@ -81,9 +81,18 @@ Resources:
     Properties:
       FunctionName: rcra-remediator
       CodeUri: ../src/
-      Handler: remediator_lambda.handler
+      Handler: enhanced_remediator_lambda.handler
       Policies:
         - AWSLambdaBasicExecutionRole
+        - Statement:
+            Effect: Allow
+            Action:
+              - lambda:GetFunctionConfiguration
+              - lambda:UpdateFunctionConfiguration
+              - cloudwatch:PutMetricAlarm
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+            Resource: "*"
 
   RCRAPersistFunction:
     Type: AWS::Serverless::Function
@@ -101,6 +110,24 @@ Resources:
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt NotificationTopic.TopicName
 
+  DummyAppFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: rcra-dummy-app
+      CodeUri: ../src/
+      Handler: dummy_app_lambda.handler
+      Timeout: 30
+      MemorySize: 512
+      Policies:
+        - AWSLambdaBasicExecutionRole
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /dummy-app
+            Method: GET
+            ApiId: !Ref RCRADashboardAPI
+
   RCRADashboardAPIFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -114,6 +141,12 @@ Resources:
         - AWSLambdaBasicExecutionRole
         - DynamoDBReadPolicy:
             TableName: !Ref RCRATable
+        - Statement:
+            Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource:
+              - !GetAtt DummyAppFunction.Arn
       Events:
         GetIncidents:
           Type: HttpApi
@@ -144,6 +177,18 @@ Resources:
           Properties:
             Path: /statistics
             Method: OPTIONS
+            ApiId: !Ref RCRADashboardAPI
+        TriggerError:
+          Type: HttpApi
+          Properties:
+            Path: /trigger-error
+            Method: GET
+            ApiId: !Ref RCRADashboardAPI
+        TriggerRemediation:
+          Type: HttpApi
+          Properties:
+            Path: /remediate
+            Method: POST
             ApiId: !Ref RCRADashboardAPI
 
   RCRADashboardAPI:

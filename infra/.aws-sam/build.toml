@@ -7,6 +7,6 @@ architecture = "x86_64"
 handler = "log_ingest_lambda.handler"
 manifest_hash = ""
 packagetype = "Zip"
-functions = ["RCRALogIngestFunction", "RCRAAnalyzerFunction", "RCRARemediatorFunction", "RCRAPersistFunction"]
+functions = ["RCRALogIngestFunction", "RCRAAnalyzerFunction", "RCRARemediatorFunction", "RCRAPersistFunction", "DummyAppFunction", "RCRADashboardAPIFunction"]
 
 [layer_build_definitions]

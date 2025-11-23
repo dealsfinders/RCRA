@@ -30,17 +30,155 @@ def handler(event, context):
 
     table.put_item(Item=item)
 
-    subject = f"[RCRA] RCA for incident {incident_id} – {analysis.get('severity', 'UNKNOWN')}"
-    steps = "\n- ".join(analysis.get("suggested_remediation_steps", []))
-    message = (
-        f"Incident ID: {incident_id}\n"
-        f"Summary: {analysis.get('summary')}\n"
-        f"Probable Root Cause: {analysis.get('probable_root_cause')}\n"
-        f"Severity: {analysis.get('severity')}\n\n"
-        f"Suggested Steps:\n- {steps if steps else 'None provided'}\n\n"
-        f"Auto Remediation Eligible: {remediation.get('autoRemediationEligible')}"
-    )
+    # Determine email subject based on remediation status
+    severity = analysis.get('severity', 'UNKNOWN')
+    remediation_action = remediation.get('remediationActionTaken', 'NONE')
+    
+    if remediation_action == 'AUTO_REMEDIATED':
+        subject = f"[RCRA] ✅ AUTO-FIXED: {severity} - {incident_id}"
+    elif remediation_action == 'FAILED':
+        subject = f"[RCRA] ⚠️ AUTO-FIX FAILED: {severity} - {incident_id}"
+    elif remediation_action == 'MANUAL_APPROVAL_REQUIRED':
+        subject = f"[RCRA] 👤 APPROVAL NEEDED: {severity} - {incident_id}"
+    else:
+        subject = f"[RCRA] 📊 NEW INCIDENT: {severity} - {incident_id}"
+
+    # Build detailed message
+    message = build_email_message(incident_id, event, analysis, remediation)
 
     sns.publish(TopicArn=TOPIC_ARN, Subject=subject, Message=message)
 
     return {"status": "saved_and_notified", "incidentId": incident_id}
+
+
+def build_email_message(incident_id, event, analysis, remediation):
+    """Build a detailed email message with remediation information"""
+    
+    # Header
+    message = f"""
+╔══════════════════════════════════════════════════════════════════╗
+║          RCRA - Root Cause & Remediation Alert                   ║
+╚══════════════════════════════════════════════════════════════════╝
+
+INCIDENT DETAILS
+================
+Incident ID: {incident_id}
+Timestamp: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
+Severity: {analysis.get('severity', 'UNKNOWN')}
+Log Group: {event.get('logGroup')}
+Log Stream: {event.get('logStream')}
+
+"""
+
+    # Analysis Section
+    message += f"""
+AI ANALYSIS
+===========
+Summary: {analysis.get('summary', 'N/A')}
+
+Root Cause:
+{analysis.get('probable_root_cause', 'N/A')}
+
+"""
+
+    # Remediation Section
+    auto_remediation = remediation.get('autoRemediationEligible', False)
+    action_taken = remediation.get('remediationActionTaken', 'NONE')
+    details = remediation.get('details', '')
+    aws_actions = remediation.get('awsActions', [])
+
+    message += f"""
+AUTO-REMEDIATION STATUS
+=======================
+Eligible for Auto-Fix: {'YES' if auto_remediation else 'NO'}
+Action Taken: {action_taken}
+
+"""
+
+    if action_taken == 'AUTO_REMEDIATED':
+        message += f"""✅ SUCCESSFULLY AUTO-REMEDIATED!
+
+Details: {details}
+
+AWS Actions Performed:
+"""
+        for action in aws_actions:
+            message += f"""
+  • Service: {action.get('service', 'N/A')}
+  • Action: {action.get('action', 'N/A')}
+  • Resource: {action.get('resource', 'N/A')}
+  • Changes: {json.dumps(action.get('changes', {}), indent=4)}
+"""
+        message += "\n✨ The issue has been automatically resolved. No manual intervention needed."
+
+    elif action_taken == 'FAILED':
+        message += f"""⚠️ AUTO-REMEDIATION FAILED
+
+Details: {details}
+
+Manual intervention is required. Please review the incident in the dashboard.
+"""
+
+    elif action_taken == 'MANUAL_APPROVAL_REQUIRED':
+        message += f"""👤 MANUAL APPROVAL REQUIRED
+
+Details: {details}
+
+This is a critical function that requires human approval before remediation.
+Please review and approve the suggested actions in the dashboard.
+"""
+
+    elif action_taken == 'ANALYSIS_ONLY':
+        message += f"""📊 ANALYSIS COMPLETED
+
+Details: {details}
+
+No automatic remediation was performed. Please review the suggested steps below.
+"""
+
+    else:
+        message += f"""
+No automatic remediation was attempted.
+"""
+
+    # Suggested Remediation Steps
+    steps = analysis.get("suggested_remediation_steps", [])
+    if steps:
+        message += f"""
+
+SUGGESTED REMEDIATION STEPS (from AI Analysis)
+===============================================
+"""
+        for i, step in enumerate(steps, 1):
+            message += f"{i}. {step}\n"
+
+    # Tags
+    tags = analysis.get("tags", [])
+    if tags:
+        message += f"""
+Tags: {', '.join(tags)}
+"""
+
+    # Error Log
+    raw_message = event.get('rawLogMessage', '')
+    if raw_message:
+        message += f"""
+
+RAW ERROR LOG
+=============
+{raw_message[:500]}{'...' if len(raw_message) > 500 else ''}
+
+"""
+
+    # Footer
+    message += f"""
+══════════════════════════════════════════════════════════════════
+View full details in the RCRA Dashboard:
+http://localhost:8080/index.html
+
+Need help? Check the documentation:
+/Users/selva/Documents/Project/RCRA/AUTO_REMEDIATION_GUIDE.md
+══════════════════════════════════════════════════════════════════
+"""
+
+    return message
