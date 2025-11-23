@@ -82,6 +82,9 @@ Resources:
       FunctionName: rcra-remediator
       CodeUri: ../src/
       Handler: enhanced_remediator_lambda.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref RCRATable
       Policies:
         - AWSLambdaBasicExecutionRole
         - Statement:
@@ -92,7 +95,10 @@ Resources:
               - cloudwatch:PutMetricAlarm
               - logs:CreateLogGroup
               - logs:CreateLogStream
-            Resource: "*"
+              - dynamodb:GetItem
+            Resource: 
+              - "*"
+              - !GetAtt RCRATable.Arn
 
   RCRAPersistFunction:
     Type: AWS::Serverless::Function

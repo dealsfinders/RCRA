@@ -72,6 +72,18 @@ def handler(event, context):
         elif (path == "/remediate" or path.endswith("/remediate")) and http_method == "POST":
             body = json.loads(event.get("body", "{}"))
             response_data = trigger_remediation(body)
+        elif path == "/config/critical-functions" or path.endswith("/config/critical-functions"):
+            if http_method == "GET":
+                response_data = get_critical_functions()
+            elif http_method == "POST":
+                body = json.loads(event.get("body", "{}"))
+                response_data = update_critical_functions(body)
+            else:
+                return {
+                    "statusCode": 405,
+                    "headers": cors_headers(),
+                    "body": json.dumps({"error": "Method not allowed"}),
+                }
         else:
             return {
                 "statusCode": 404,
@@ -120,8 +132,10 @@ def get_incidents(query_params):
     incidents = []
     for item in items:
         analysis = item.get("AnalysisResult", {})
+        remediation = item.get("RemediationResult", {})
         incident = {
             "incidentId": item.get("IncidentId"),
+            "ticketNumber": item.get("TicketNumber", "N/A"),
             "timestamp": item.get("CreatedAt"),
             "logGroup": item.get("LogGroup"),
             "logStream": item.get("LogStream"),
@@ -130,9 +144,8 @@ def get_incidents(query_params):
             "severity": analysis.get("severity", "UNKNOWN"),
             "rootCause": analysis.get("probable_root_cause", "N/A"),
             "tags": analysis.get("tags", []),
-            "remediationEligible": item.get("RemediationResult", {}).get(
-                "autoRemediationEligible", False
-            ),
+            "remediationEligible": remediation.get("autoRemediationEligible", False),
+            "remediationAction": remediation.get("remediationActionTaken", "NONE"),
         }
         incidents.append(incident)
 
@@ -159,6 +172,7 @@ def get_incident_by_id(incident_id):
 
     incident_detail = {
         "incidentId": item.get("IncidentId"),
+        "ticketNumber": item.get("TicketNumber", "N/A"),
         "timestamp": item.get("CreatedAt"),
         "logGroup": item.get("LogGroup"),
         "logStream": item.get("LogStream"),
@@ -174,6 +188,7 @@ def get_incident_by_id(incident_id):
             "eligible": remediation.get("autoRemediationEligible", False),
             "actionTaken": remediation.get("remediationActionTaken", "NONE"),
             "details": remediation.get("details", ""),
+            "awsActions": remediation.get("awsActions", []),
         },
     }
 
@@ -232,12 +247,16 @@ def get_statistics():
     items.sort(key=lambda x: x.get("CreatedAt", ""), reverse=True)
     for item in items[:5]:
         analysis = item.get("AnalysisResult", {})
+        remediation = item.get("RemediationResult", {})
         recent_incidents.append(
             {
                 "incidentId": item.get("IncidentId"),
+                "ticketNumber": item.get("TicketNumber", "N/A"),
                 "timestamp": item.get("CreatedAt"),
                 "summary": analysis.get("summary", "N/A"),
                 "severity": analysis.get("severity", "UNKNOWN"),
+                "remediationAction": remediation.get("remediationActionTaken", "NONE"),
+                "remediationEligible": remediation.get("autoRemediationEligible", False),
             }
         )
 
@@ -337,6 +356,68 @@ def trigger_remediation(body):
             "action": action,
             "message": f"Remediation action '{action}' queued for incident {incident_id}",
             "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+def get_critical_functions():
+    """Get the list of critical functions that require manual approval"""
+    try:
+        response = table.get_item(Key={"IncidentId": "CONFIG_CRITICAL_FUNCTIONS"})
+        item = response.get("Item", {})
+        functions = item.get("functions", [])
+        
+        return {
+            "success": True,
+            "criticalFunctions": functions,
+            "count": len(functions)
+        }
+    except Exception as e:
+        return {
+            "success": True,
+            "criticalFunctions": [],
+            "count": 0
+        }
+
+
+def update_critical_functions(body):
+    """Update the list of critical functions"""
+    functions = body.get("functions", [])
+    action = body.get("action")  # "add" or "remove"
+    function_name = body.get("functionName")
+    
+    try:
+        # Get current list
+        response = table.get_item(Key={"IncidentId": "CONFIG_CRITICAL_FUNCTIONS"})
+        item = response.get("Item", {})
+        current_functions = item.get("functions", [])
+        
+        if action == "add" and function_name:
+            if function_name not in current_functions:
+                current_functions.append(function_name)
+        elif action == "remove" and function_name:
+            if function_name in current_functions:
+                current_functions.remove(function_name)
+        elif functions is not None:
+            # Replace entire list
+            current_functions = functions
+        
+        # Save back
+        table.put_item(Item={
+            "IncidentId": "CONFIG_CRITICAL_FUNCTIONS",
+            "functions": current_functions,
+            "CreatedAt": datetime.utcnow().isoformat() + "Z"
+        })
+        
+        return {
+            "success": True,
+            "criticalFunctions": current_functions,
+            "message": f"Critical functions updated. Total: {len(current_functions)}"
         }
         
     except Exception as e:

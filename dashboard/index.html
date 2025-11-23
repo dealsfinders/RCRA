@@ -221,6 +221,40 @@
             color: #666;
         }
 
+        .remediation-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-block;
+            margin-left: 8px;
+        }
+
+        .remediation-AUTO_REMEDIATED {
+            background: #10b981;
+            color: white;
+        }
+
+        .remediation-FAILED {
+            background: #ef4444;
+            color: white;
+        }
+
+        .remediation-MANUAL_APPROVAL_REQUIRED {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .remediation-ANALYSIS_ONLY {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .remediation-NONE {
+            background: #9ca3af;
+            color: white;
+        }
+
         .incident-summary {
             font-size: 16px;
             font-weight: 600;
@@ -562,7 +596,10 @@
                                 </div>
 
                                 {activeTab === 'dashboard' && statistics && (
-                                    <DashboardTab statistics={statistics} />
+                                    <DashboardTab 
+                                        statistics={statistics} 
+                                        setSelectedIncident={setSelectedIncident}
+                                    />
                                 )}
 
                                 {activeTab === 'incidents' && (
@@ -597,7 +634,7 @@
         }
 
         // Dashboard Tab Component
-        function DashboardTab({ statistics }) {
+        function DashboardTab({ statistics, setSelectedIncident }) {
             return (
                 <div>
                     <h2>Severity Breakdown</h2>
@@ -615,12 +652,35 @@
                     <h2 style={{marginTop: '30px'}}>Recent Incidents</h2>
                     <div className="recent-list" style={{marginTop: '20px'}}>
                         {statistics.recentIncidents.map(incident => (
-                            <div key={incident.incidentId} className="recent-item">
+                            <div 
+                                key={incident.incidentId} 
+                                className="recent-item" 
+                                onClick={() => setSelectedIncident(incident)}
+                                style={{cursor: 'pointer', transition: 'all 0.3s'}}
+                                onMouseEnter={(e) => e.currentTarget.style.background = '#f0f4ff'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = '#f9f9f9'}
+                            >
                                 <div>
+                                    {incident.ticketNumber && incident.ticketNumber !== 'N/A' && (
+                                        <div style={{fontSize: '11px', color: '#667eea', fontWeight: '600', marginBottom: '3px'}}>
+                                            🎫 {incident.ticketNumber}
+                                        </div>
+                                    )}
                                     <div style={{fontWeight: '600'}}>{incident.summary}</div>
                                     <div style={{fontSize: '12px', color: '#999', marginTop: '5px'}}>
                                         {new Date(incident.timestamp).toLocaleString()}
                                     </div>
+                                    {incident.remediationAction && incident.remediationAction !== 'NONE' && (
+                                        <div style={{marginTop: '5px'}}>
+                                            <span className={`remediation-badge remediation-${incident.remediationAction}`}>
+                                                {incident.remediationAction === 'AUTO_REMEDIATED' ? '✅ AUTO-FIXED' :
+                                                 incident.remediationAction === 'FAILED' ? '⚠️ FAILED' :
+                                                 incident.remediationAction === 'MANUAL_APPROVAL_REQUIRED' ? '👤 APPROVAL' :
+                                                 incident.remediationAction === 'ANALYSIS_ONLY' ? '📊 ANALYSIS' :
+                                                 incident.remediationAction}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                                 <span className={`severity-badge severity-${incident.severity}`}>
                                     {incident.severity}
@@ -670,7 +730,14 @@
                                     onClick={() => setSelectedIncident(incident)}
                                 >
                                     <div className="incident-header">
-                                        <div className="incident-id">{incident.incidentId}</div>
+                                        <div>
+                                            <div className="incident-id">{incident.incidentId}</div>
+                                            {incident.ticketNumber && incident.ticketNumber !== 'N/A' && (
+                                                <div style={{fontSize: '13px', color: '#667eea', fontWeight: '600', marginTop: '3px'}}>
+                                                    🎫 {incident.ticketNumber}
+                                                </div>
+                                            )}
+                                        </div>
                                         <span className={`severity-badge severity-${incident.severity}`}>
                                             {incident.severity}
                                         </span>
@@ -682,6 +749,17 @@
                                     <div style={{color: '#666', fontSize: '14px', marginTop: '8px'}}>
                                         {incident.rootCause}
                                     </div>
+                                    {incident.remediationAction && incident.remediationAction !== 'NONE' && (
+                                        <div style={{marginTop: '8px'}}>
+                                            <span className={`remediation-badge remediation-${incident.remediationAction}`}>
+                                                {incident.remediationAction === 'AUTO_REMEDIATED' ? '✅ AUTO-FIXED' :
+                                                 incident.remediationAction === 'FAILED' ? '⚠️ FAILED' :
+                                                 incident.remediationAction === 'MANUAL_APPROVAL_REQUIRED' ? '👤 APPROVAL NEEDED' :
+                                                 incident.remediationAction === 'ANALYSIS_ONLY' ? '📊 ANALYSIS ONLY' :
+                                                 incident.remediationAction}
+                                            </span>
+                                        </div>
+                                    )}
                                     {incident.tags && incident.tags.length > 0 && (
                                         <div className="incident-tags">
                                             {incident.tags.map(tag => (
@@ -723,6 +801,11 @@
                         <div className="modal-header">
                             <div>
                                 <h2>Incident Details</h2>
+                                {details && details.ticketNumber && details.ticketNumber !== 'N/A' && (
+                                    <div style={{fontSize: '16px', color: '#667eea', fontWeight: '700', marginBottom: '5px'}}>
+                                        🎫 Ticket: {details.ticketNumber}
+                                    </div>
+                                )}
                                 <div className="incident-id">{incident.incidentId}</div>
                             </div>
                             <button className="modal-close" onClick={onClose}>×</button>

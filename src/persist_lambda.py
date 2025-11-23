@@ -1,5 +1,6 @@
 import json
 import os
+import random
 from datetime import datetime
 
 import boto3
@@ -13,13 +14,31 @@ sns = boto3.client("sns")
 table = dynamodb.Table(TABLE_NAME)
 
 
+def generate_ticket_number():
+    """Generate a human-friendly support ticket number like RCRA-2025-001234"""
+    year = datetime.utcnow().year
+    # Generate a random 6-digit number
+    ticket_num = random.randint(100000, 999999)
+    return f"RCRA-{year}-{ticket_num}"
+
+
 def handler(event, context):
     incident_id = event.get("incidentId")
-    analysis = event.get("analysisResult", {})
-    remediation = event.get("remediationResult", {})
+    
+    # Handle nested structure from Step Functions
+    # The event has analysis.analysisResult and remediation.remediationResult
+    analysis_wrapper = event.get("analysis", {})
+    remediation_wrapper = event.get("remediation", {})
+    
+    analysis = analysis_wrapper.get("analysisResult", {})
+    remediation = remediation_wrapper.get("remediationResult", {})
+    
+    # Generate human-friendly ticket number
+    ticket_number = generate_ticket_number()
 
     item = {
         "IncidentId": incident_id,
+        "TicketNumber": ticket_number,
         "CreatedAt": datetime.utcnow().isoformat() + "Z",
         "LogGroup": event.get("logGroup"),
         "LogStream": event.get("logStream"),
@@ -44,14 +63,14 @@ def handler(event, context):
         subject = f"[RCRA] 📊 NEW INCIDENT: {severity} - {incident_id}"
 
     # Build detailed message
-    message = build_email_message(incident_id, event, analysis, remediation)
+    message = build_email_message(incident_id, ticket_number, event, analysis, remediation)
 
     sns.publish(TopicArn=TOPIC_ARN, Subject=subject, Message=message)
 
-    return {"status": "saved_and_notified", "incidentId": incident_id}
+    return {"status": "saved_and_notified", "incidentId": incident_id, "ticketNumber": ticket_number}
 
 
-def build_email_message(incident_id, event, analysis, remediation):
+def build_email_message(incident_id, ticket_number, event, analysis, remediation):
     """Build a detailed email message with remediation information"""
     
     # Header
@@ -62,6 +81,7 @@ def build_email_message(incident_id, event, analysis, remediation):
 
 INCIDENT DETAILS
 ================
+Support Ticket: {ticket_number}
 Incident ID: {incident_id}
 Timestamp: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
 Severity: {analysis.get('severity', 'UNKNOWN')}

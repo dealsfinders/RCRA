@@ -13,6 +13,33 @@ import boto3
 lambda_client = boto3.client("lambda")
 logs_client = boto3.client("logs")
 cloudwatch = boto3.client("cloudwatch")
+dynamodb = boto3.resource("dynamodb")
+
+# Get table name from environment or default
+TABLE_NAME = os.environ.get("TABLE_NAME", "RCRARootCauseTable")
+table = dynamodb.Table(TABLE_NAME)
+
+
+def is_critical_function(log_group):
+    """Check if the log group/function is marked as critical"""
+    try:
+        # Extract function name from log group
+        # Log groups are typically: /aws/lambda/function-name
+        function_name = log_group.replace("/aws/lambda/", "")
+        
+        # Get critical functions list from DynamoDB
+        response = table.get_item(Key={"IncidentId": "CONFIG_CRITICAL_FUNCTIONS"})
+        item = response.get("Item", {})
+        critical_functions = item.get("functions", [])
+        
+        is_critical = function_name in critical_functions
+        print(f"[REMEDIATOR] Function '{function_name}' critical check: {is_critical}")
+        
+        return is_critical
+    except Exception as e:
+        print(f"[REMEDIATOR] Error checking critical functions: {str(e)}")
+        # Fail safe: if we can't check, don't auto-remediate
+        return False
 
 
 def handler(event, context):
@@ -29,6 +56,19 @@ def handler(event, context):
     print(f"[REMEDIATOR] Processing incident: {incident_id}")
     print(f"[REMEDIATOR] Severity: {analysis.get('severity')}")
     print(f"[REMEDIATOR] Message: {raw_message[:200]}")
+    
+    # Check if this function is marked as critical
+    if is_critical_function(log_group):
+        print(f"[REMEDIATOR] Function is CRITICAL - requiring manual approval")
+        return {
+            "remediationResult": {
+                "autoRemediationEligible": True,  # Eligible but blocked
+                "remediationActionTaken": "MANUAL_APPROVAL_REQUIRED",
+                "details": f"This function is marked as CRITICAL and requires manual approval before remediation. Please review the suggested remediation steps and apply manually after approval.",
+                "awsActions": [],
+                "criticalFunction": True
+            }
+        }
     
     # Determine if auto-remediation is possible
     remediation_result = {
