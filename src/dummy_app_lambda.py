@@ -21,7 +21,8 @@ def handler(event, context):
     if scenario == 'random':
         scenario = random.choice([
             'timeout', 'memory', 'connection', 'api_throttle', 
-            'cache_error', 'health_check', 'dlq', 'success'
+            'cache_error', 'health_check', 'dlq', 'disk_full',
+            'auth_error', 'dependency_timeout', 'success'
         ])
     
     print(f"[DUMMY_APP] Executing scenario: {scenario}")
@@ -41,6 +42,12 @@ def handler(event, context):
             return simulate_health_check_failure()
         elif scenario == 'dlq':
             return simulate_dlq_message()
+        elif scenario == 'disk_full':
+            return simulate_disk_full()
+        elif scenario == 'auth_error':
+            return simulate_auth_error()
+        elif scenario == 'dependency_timeout':
+            return simulate_dependency_timeout()
         else:
             return {
                 'statusCode': 200,
@@ -152,6 +159,47 @@ def simulate_dlq_message():
         "Retry count: 3/3, Moving to DLQ. "
         "Auto-remediation: Analyze and replay DLQ messages"
     )
+
+
+def simulate_disk_full():
+    """Simulates disk filling up on Lambda temporary storage"""
+    print("ERROR: /tmp storage is full")
+    print("Available space: 0MB of 512MB")
+    print("Write operations are failing due to ENOSPC")
+
+    raise Exception(
+        "ERROR: DiskFull - /tmp storage exhausted. "
+        "Failed to write diagnostic artifact. "
+        "Auto-remediation: Increase ephemeral storage to 2048MB and purge temp files"
+    )
+
+
+def simulate_auth_error():
+    """Simulates expired authentication tokens or invalid IAM permissions"""
+    print("ERROR: Authentication failure when calling downstream service")
+    print("STS token expired 5 minutes ago")
+    print("IAM role missing s3:PutObject permission")
+
+    raise Exception(
+        "ERROR: AuthFailure - Expired session token or missing permissions. "
+        "Downstream calls failing with AccessDeniedException. "
+        "Auto-remediation: Refresh credentials and validate IAM policy permissions"
+    )
+
+
+def simulate_dependency_timeout():
+    """Simulates third-party dependency timeouts"""
+    print("ERROR: Dependency service timed out")
+    print("POST https://payments.example.com/charge exceeded 30s")
+    print("Timeouts observed for last 25% of requests")
+
+    raise Exception(
+        "ERROR: UpstreamTimeout - Third-party dependency call exceeded timeout. "
+        "Payment gateway not responding within 30s SLA. "
+        "Auto-remediation: Increase HTTP timeout and retry with exponential backoff"
+    )
+
+
 
 
 

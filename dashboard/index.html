@@ -66,6 +66,21 @@
             width: 400px;
         }
 
+        .config-section select {
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .select-control {
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
+        }
+
         .config-section button {
             padding: 10px 20px;
             background: #667eea;
@@ -550,6 +565,19 @@
 
     <script type="text/babel">
         const { useState, useEffect } = React;
+        const SCENARIO_OPTIONS = [
+            { value: 'random', label: 'Random mix' },
+            { value: 'timeout', label: 'Lambda timeout' },
+            { value: 'memory', label: 'Out of memory' },
+            { value: 'connection', label: 'DB connection pool exhausted' },
+            { value: 'api_throttle', label: 'API Gateway throttling' },
+            { value: 'cache_error', label: 'Cache corruption' },
+            { value: 'health_check', label: 'Health check failure' },
+            { value: 'dlq', label: 'SQS DLQ escalation' },
+            { value: 'disk_full', label: '/tmp disk full' },
+            { value: 'auth_error', label: 'Auth/IAM failure' },
+            { value: 'dependency_timeout', label: 'Upstream dependency timeout' },
+        ];
 
         // Main Dashboard Component
         function Dashboard() {
@@ -567,6 +595,8 @@
             const [eligibleIncidents, setEligibleIncidents] = useState([]);
             const [remediatingId, setRemediatingId] = useState(null);
             const [showConfig, setShowConfig] = useState(false);
+            const [triggeringScenario, setTriggeringScenario] = useState('random');
+            const [triggeringError, setTriggeringError] = useState(false);
             const defaultConfig = {
                 lambdaTimeout: true,
                 outOfMemory: true,
@@ -617,6 +647,28 @@
                 localStorage.setItem('rcraApiEndpoint', tempEndpoint);
                 setApiEndpoint(tempEndpoint);
                 setError(null);
+            };
+
+            const triggerTestError = async () => {
+                if (!apiEndpoint) {
+                    alert('Please save your API endpoint first.');
+                    return;
+                }
+
+                setTriggeringError(true);
+                try {
+                    const res = await fetch(`${apiEndpoint}/trigger-error?scenario=${triggeringScenario}`);
+                    const data = await res.json();
+                    if (!res.ok || data.success === false || data.error) {
+                        throw new Error(data.error || data.message || 'Failed to trigger error');
+                    }
+                    alert(data.message || 'Triggered test error');
+                    await fetchData();
+                } catch (err) {
+                    alert('Failed to trigger error: ' + err.message);
+                } finally {
+                    setTriggeringError(false);
+                }
             };
 
             const fetchData = async () => {
@@ -754,6 +806,35 @@
 
                     {error && <div className="error">⚠️ Error: {error}</div>}
 
+                    {apiEndpoint && (
+                        <div className="content-section" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px'}}>
+                            <div>
+                                <h2>Generate Test Error</h2>
+                                <div className="header-subtitle" style={{marginTop: '6px', maxWidth: '720px'}}>
+                                    Trigger the dummy application to produce synthetic incidents for testing the remediation flow.
+                                </div>
+                            </div>
+                            <div style={{display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap'}}>
+                                <select 
+                                    className="select-control"
+                                    value={triggeringScenario} 
+                                    onChange={(e) => setTriggeringScenario(e.target.value)}
+                                >
+                                    {SCENARIO_OPTIONS.map(opt => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                                <button 
+                                    className="secondary-button" 
+                                    onClick={triggerTestError}
+                                    disabled={triggeringError}
+                                >
+                                    {triggeringError ? '⏳ Triggering...' : '⚡ Trigger error'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {!apiEndpoint ? (
                         <div className="content-section">
                             <h2>Welcome to RCRA Dashboard</h2>
@@ -823,6 +904,7 @@
                                         severityFilter={severityFilter}
                                         setSeverityFilter={setSeverityFilter}
                                         setSelectedIncident={setSelectedIncident}
+                                        fetchLogs={fetchLogs}
                                     />
                                 )}
                             </div>
@@ -844,6 +926,7 @@
                             onRemediate={remediateIncident}
                             remediatingId={remediatingId}
                             setSelectedIncident={setSelectedIncident}
+                            fetchLogs={fetchLogs}
                         />
                     )}
 
@@ -967,7 +1050,7 @@
         }
 
         // Incidents Tab Component
-        function IncidentsTab({ incidents, severityFilter, setSeverityFilter, setSelectedIncident }) {
+        function IncidentsTab({ incidents, severityFilter, setSeverityFilter, setSelectedIncident, fetchLogs }) {
             return (
                 <div>
                     <div className="filter-bar">
@@ -1059,7 +1142,7 @@
         }
 
         // Auto-remediation eligible modal
-        function RemediationEligibleModal({ incidents, onClose, onRemediate, remediatingId, setSelectedIncident }) {
+        function RemediationEligibleModal({ incidents, onClose, onRemediate, remediatingId, setSelectedIncident, fetchLogs }) {
             const openDetails = (incident) => {
                 setSelectedIncident(incident);
                 onClose();
@@ -1131,6 +1214,17 @@
                                             >
                                                 View details
                                             </button>
+                                            {incident.status === 'IN_PROGRESS' && (
+                                                <button 
+                                                    className="filter-btn"
+                                                    onClick={() => { 
+                                                        onClose(); 
+                                                        fetchLogs(incident); 
+                                                    }}
+                                                >
+                                                    View Logs
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
