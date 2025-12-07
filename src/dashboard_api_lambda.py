@@ -253,6 +253,9 @@ def get_incident_by_id(incident_id):
     incident_detail = {
         "incidentId": item.get("IncidentId"),
         "ticketNumber": item.get("TicketNumber", "N/A"),
+        "status": item.get("Status", "OPEN"),
+        "resolvedAt": item.get("ResolvedAt"),
+        "resolvedBy": item.get("ResolvedBy"),
         "timestamp": item.get("CreatedAt"),
         "logGroup": item.get("LogGroup"),
         "logStream": item.get("LogStream"),
