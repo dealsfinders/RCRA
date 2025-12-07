@@ -606,6 +606,7 @@
             const [activeTab, setActiveTab] = useState('dashboard');
             const [selectedIncident, setSelectedIncident] = useState(null);
             const [severityFilter, setSeverityFilter] = useState('ALL');
+            const [statusFilter, setStatusFilter] = useState('ALL');
             const [refreshing, setRefreshing] = useState(false);
             const [showEligibleModal, setShowEligibleModal] = useState(false);
             const [eligibleIncidents, setEligibleIncidents] = useState([]);
@@ -794,9 +795,13 @@
                 }
             }, [apiEndpoint]);
 
-            const filteredIncidents = severityFilter === 'ALL' 
-                ? incidents 
-                : incidents.filter(inc => inc.severity === severityFilter);
+            const filteredIncidents = incidents.filter(inc => {
+                const severityMatch = severityFilter === 'ALL' || inc.severity === severityFilter;
+                const statusMatch = statusFilter === 'ALL' || 
+                    (statusFilter === 'OPEN' && inc.status !== 'RESOLVED') ||
+                    (statusFilter === 'RESOLVED' && inc.status === 'RESOLVED');
+                return severityMatch && statusMatch;
+            });
 
             return (
                 <div className="container">
@@ -945,6 +950,8 @@
                                     <DashboardTab 
                                         statistics={statistics} 
                                         setSelectedIncident={setSelectedIncident}
+                                        setActiveTab={setActiveTab}
+                                        setStatusFilter={setStatusFilter}
                                     />
                                 )}
 
@@ -953,6 +960,8 @@
                                         incidents={filteredIncidents}
                                         severityFilter={severityFilter}
                                         setSeverityFilter={setSeverityFilter}
+                                        statusFilter={statusFilter}
+                                        setStatusFilter={setStatusFilter}
                                         setSelectedIncident={setSelectedIncident}
                                         fetchLogs={fetchLogs}
                                     />
@@ -1013,21 +1022,71 @@
         }
 
         // Dashboard Tab Component
-        function DashboardTab({ statistics, setSelectedIncident }) {
+        function DashboardTab({ statistics, setSelectedIncident, setActiveTab, setStatusFilter }) {
+            
+            const handleTicketCardClick = (status) => {
+                setStatusFilter(status);
+                setActiveTab('incidents');
+            };
+            
             return (
                 <div>
                     <h2>Ticket Status Overview</h2>
                     <div className="stats-grid" style={{marginTop: '20px', gridTemplateColumns: 'repeat(2, 1fr)'}}>
-                        <div className="stat-card" style={{background: '#fef3c7'}}>
+                        <div 
+                            className="stat-card" 
+                            style={{
+                                background: '#fef3c7', 
+                                cursor: 'pointer',
+                                transition: 'all 0.3s ease',
+                                border: '2px solid transparent'
+                            }}
+                            onClick={() => handleTicketCardClick('OPEN')}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-3px)';
+                                e.currentTarget.style.boxShadow = '0 8px 25px rgba(146, 64, 14, 0.2)';
+                                e.currentTarget.style.borderColor = '#f59e0b';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = 'none';
+                                e.currentTarget.style.borderColor = 'transparent';
+                            }}
+                        >
                             <h3>🔓 Open Tickets</h3>
                             <div className="stat-value" style={{color: '#92400e'}}>
                                 {statistics.overview.openTickets || 0}
                             </div>
+                            <div style={{fontSize: '12px', color: '#b45309', marginTop: '8px'}}>
+                                Click to view →
+                            </div>
                         </div>
-                        <div className="stat-card" style={{background: '#d1fae5'}}>
+                        <div 
+                            className="stat-card" 
+                            style={{
+                                background: '#d1fae5',
+                                cursor: 'pointer',
+                                transition: 'all 0.3s ease',
+                                border: '2px solid transparent'
+                            }}
+                            onClick={() => handleTicketCardClick('RESOLVED')}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-3px)';
+                                e.currentTarget.style.boxShadow = '0 8px 25px rgba(6, 95, 70, 0.2)';
+                                e.currentTarget.style.borderColor = '#10b981';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = 'none';
+                                e.currentTarget.style.borderColor = 'transparent';
+                            }}
+                        >
                             <h3>✅ Resolved Tickets</h3>
                             <div className="stat-value" style={{color: '#065f46'}}>
                                 {statistics.overview.resolvedTickets || 0}
+                            </div>
+                            <div style={{fontSize: '12px', color: '#047857', marginTop: '8px'}}>
+                                Click to view →
                             </div>
                         </div>
                     </div>
@@ -1105,10 +1164,34 @@
         }
 
         // Incidents Tab Component
-        function IncidentsTab({ incidents, severityFilter, setSeverityFilter, setSelectedIncident, fetchLogs }) {
+        function IncidentsTab({ incidents, severityFilter, setSeverityFilter, statusFilter, setStatusFilter, setSelectedIncident, fetchLogs }) {
             return (
                 <div>
+                    {/* Status Filter */}
+                    <div className="filter-bar" style={{marginBottom: '10px'}}>
+                        <span style={{marginRight: '10px', fontWeight: '600', color: '#666'}}>Status:</span>
+                        {[
+                            {value: 'ALL', label: '📋 All', color: '#6b7280'},
+                            {value: 'OPEN', label: '🔓 Open', color: '#f59e0b'},
+                            {value: 'RESOLVED', label: '✅ Resolved', color: '#10b981'}
+                        ].map(({value, label, color}) => (
+                            <button
+                                key={value}
+                                className={`filter-btn ${statusFilter === value ? 'active' : ''}`}
+                                onClick={() => setStatusFilter(value)}
+                                style={{
+                                    borderColor: statusFilter === value ? color : undefined,
+                                    color: statusFilter === value ? color : undefined
+                                }}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                    
+                    {/* Severity Filter */}
                     <div className="filter-bar">
+                        <span style={{marginRight: '10px', fontWeight: '600', color: '#666'}}>Severity:</span>
                         {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(severity => (
                             <button
                                 key={severity}
