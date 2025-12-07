@@ -763,6 +763,8 @@
                 confirmText: 'Confirm',
                 cancelText: 'Cancel',
                 type: 'warning',
+                inputField: null,
+                inputValue: '',
                 onConfirm: null,
             });
             
@@ -775,13 +777,15 @@
                         confirmText: options.confirmText || 'Confirm',
                         cancelText: options.cancelText || 'Cancel',
                         type: options.type || 'warning',
-                        onConfirm: () => {
+                        inputField: options.inputField || null,
+                        inputValue: options.inputField?.defaultValue || '',
+                        onConfirm: (inputVal) => {
                             setConfirmState(prev => ({ ...prev, isOpen: false }));
-                            resolve(true);
+                            resolve(options.inputField ? inputVal : true);
                         },
                         onCancel: () => {
                             setConfirmState(prev => ({ ...prev, isOpen: false }));
-                            resolve(false);
+                            resolve(options.inputField ? null : false);
                         },
                     });
                 });
@@ -791,8 +795,28 @@
                 <ConfirmContext.Provider value={showConfirm}>
                     {children}
                     {confirmState.isOpen && (
-                        <div className="modal-overlay" style={{zIndex: 10001}}>
-                            <div className="modal" style={{maxWidth: '450px', animation: 'slideIn 0.2s ease-out'}}>
+                        <div style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            width: '100vw',
+                            height: '100vh',
+                            background: 'rgba(0, 0, 0, 0.7)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 10001
+                        }}>
+                            <div style={{
+                                background: 'white',
+                                borderRadius: '16px',
+                                width: '90%',
+                                maxWidth: '450px',
+                                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                                animation: 'slideIn 0.2s ease-out',
+                                overflow: 'hidden',
+                                margin: '20px'
+                            }}>
                                 <div style={{
                                     padding: '25px',
                                     background: confirmState.type === 'danger' ? 'linear-gradient(135deg, #fef2f2, #fee2e2)' :
@@ -827,6 +851,38 @@
                                     }}>
                                         {confirmState.message}
                                     </p>
+                                    
+                                    {confirmState.inputField && (
+                                        <div style={{marginTop: '15px'}}>
+                                            <label style={{
+                                                display: 'block',
+                                                fontSize: '14px',
+                                                fontWeight: '600',
+                                                color: '#374151',
+                                                marginBottom: '8px',
+                                                textAlign: 'left'
+                                            }}>
+                                                {confirmState.inputField.label}
+                                                {confirmState.inputField.required && <span style={{color: '#ef4444'}}> *</span>}
+                                            </label>
+                                            <textarea
+                                                value={confirmState.inputValue}
+                                                onChange={(e) => setConfirmState(prev => ({...prev, inputValue: e.target.value}))}
+                                                placeholder={confirmState.inputField.placeholder || ''}
+                                                rows={3}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '12px',
+                                                    borderRadius: '8px',
+                                                    border: '2px solid #e5e7eb',
+                                                    fontSize: '14px',
+                                                    resize: 'vertical',
+                                                    fontFamily: 'inherit',
+                                                    boxSizing: 'border-box'
+                                                }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                                 <div style={{
                                     display: 'flex',
@@ -853,7 +909,8 @@
                                         {confirmState.cancelText}
                                     </button>
                                     <button
-                                        onClick={confirmState.onConfirm}
+                                        onClick={() => confirmState.onConfirm(confirmState.inputValue)}
+                                        disabled={confirmState.inputField?.required && !confirmState.inputValue.trim()}
                                         style={{
                                             padding: '12px 28px',
                                             borderRadius: '10px',
@@ -864,9 +921,10 @@
                                             color: 'white',
                                             fontWeight: '600',
                                             fontSize: '14px',
-                                            cursor: 'pointer',
+                                            cursor: confirmState.inputField?.required && !confirmState.inputValue.trim() ? 'not-allowed' : 'pointer',
                                             transition: 'all 0.2s',
-                                            boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
+                                            boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
+                                            opacity: confirmState.inputField?.required && !confirmState.inputValue.trim() ? 0.5 : 1
                                         }}
                                         onMouseEnter={(e) => e.target.style.transform = 'translateY(-2px)'}
                                         onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
@@ -2196,14 +2254,19 @@
             }, [incident.incidentId]);
             
             const handleResolve = async () => {
-                const confirmed = await confirm({
-                    title: 'Mark as Resolved?',
-                    message: 'This will mark the incident as resolved and close the ticket. Make sure the issue has been properly addressed.',
+                const resolutionNotes = await confirm({
+                    title: 'Mark as Resolved',
+                    message: 'Please describe what was fixed or how the issue was resolved:',
                     confirmText: '✅ Mark Resolved',
                     cancelText: 'Cancel',
-                    type: 'info'
+                    type: 'info',
+                    inputField: {
+                        label: 'Resolution Notes',
+                        placeholder: 'e.g., Increased Lambda timeout from 30s to 60s, Fixed database connection pool configuration...',
+                        required: true
+                    }
                 });
-                if (!confirmed) return;
+                if (!resolutionNotes) return;
                 
                 setResolving(true);
                 try {
@@ -2212,7 +2275,8 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             incidentId: incident.incidentId,
-                            resolvedBy: 'DASHBOARD_USER'
+                            resolvedBy: 'DASHBOARD_USER',
+                            resolutionNotes: resolutionNotes
                         })
                     });
                     const data = await res.json();

@@ -979,7 +979,7 @@ def get_error_occurrences(error_signature, log_group):
         return []
 
 
-def resolve_incident(incident_id, resolved_by):
+def resolve_incident(incident_id, resolved_by, resolution_notes=None):
     """Mark an incident as resolved"""
     try:
         # Get the incident
@@ -989,24 +989,33 @@ def resolve_incident(incident_id, resolved_by):
         if not item:
             return {"success": False, "error": "Incident not found"}
         
+        # Build update expression
+        update_expr = "SET #status = :status, ResolvedAt = :resolvedAt, ResolvedBy = :resolvedBy"
+        expr_values = {
+            ":status": "RESOLVED",
+            ":resolvedAt": datetime.utcnow().isoformat() + "Z",
+            ":resolvedBy": resolved_by
+        }
+        
+        if resolution_notes:
+            update_expr += ", ResolutionNotes = :notes"
+            expr_values[":notes"] = resolution_notes
+        
         # Update status
         table.update_item(
             Key={"IncidentId": incident_id},
-            UpdateExpression="SET #status = :status, ResolvedAt = :resolvedAt, ResolvedBy = :resolvedBy",
+            UpdateExpression=update_expr,
             ExpressionAttributeNames={
                 "#status": "Status"
             },
-            ExpressionAttributeValues={
-                ":status": "RESOLVED",
-                ":resolvedAt": datetime.utcnow().isoformat() + "Z",
-                ":resolvedBy": resolved_by
-            }
+            ExpressionAttributeValues=expr_values
         )
 
         # Notify resolution
         item["Status"] = "RESOLVED"
         item["ResolvedAt"] = datetime.utcnow().isoformat() + "Z"
         item["ResolvedBy"] = resolved_by
+        item["ResolutionNotes"] = resolution_notes
         publish_stage_notification(
             stage="Resolved",
             item=item,
