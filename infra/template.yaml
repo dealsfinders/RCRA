@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: RCRA - Root Cause & Remediation Assistant (MVP)
 
@@ -96,7 +96,7 @@ Resources:
               - logs:CreateLogGroup
               - logs:CreateLogStream
               - dynamodb:GetItem
-            Resource: 
+            Resource:
               - "*"
               - !GetAtt RCRATable.Arn
 
@@ -228,6 +228,18 @@ Resources:
           Type: HttpApi
           Properties:
             Path: /config/critical-functions
+            Method: POST
+            ApiId: !Ref RCRADashboardAPI
+        GetAutoRemediationConfig:
+          Type: HttpApi
+          Properties:
+            Path: /config/auto-remediation
+            Method: GET
+            ApiId: !Ref RCRADashboardAPI
+        UpdateAutoRemediationConfig:
+          Type: HttpApi
+          Properties:
+            Path: /config/auto-remediation
             Method: POST
             ApiId: !Ref RCRADashboardAPI
         ResolveIncident:

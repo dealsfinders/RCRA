@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RCRA Dashboard - Root Cause & Remediation Assistant</title>
+    
+    <!-- AI-themed Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='grad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%23667eea'/%3E%3Cstop offset='100%25' style='stop-color:%23764ba2'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='50' r='45' fill='url(%23grad)'/%3E%3Ccircle cx='50' cy='35' r='12' fill='white' opacity='0.9'/%3E%3Ccircle cx='30' cy='60' r='8' fill='white' opacity='0.7'/%3E%3Ccircle cx='70' cy='60' r='8' fill='white' opacity='0.7'/%3E%3Cpath d='M50 47 L30 60 M50 47 L70 60 M30 60 L70 60' stroke='white' stroke-width='3' fill='none' opacity='0.8'/%3E%3Ccircle cx='50' cy='35' r='5' fill='%23667eea'/%3E%3Cpath d='M44 33 L56 33 M44 37 L56 37' stroke='%23667eea' stroke-width='2'/%3E%3C/svg%3E">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='grad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%23667eea'/%3E%3Cstop offset='100%25' style='stop-color:%23764ba2'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='50' r='45' fill='url(%23grad)'/%3E%3Ccircle cx='50' cy='35' r='12' fill='white' opacity='0.9'/%3E%3Ccircle cx='30' cy='60' r='8' fill='white' opacity='0.7'/%3E%3Ccircle cx='70' cy='60' r='8' fill='white' opacity='0.7'/%3E%3Cpath d='M50 47 L30 60 M50 47 L70 60 M30 60 L70 60' stroke='white' stroke-width='3' fill='none' opacity='0.8'/%3E%3Ccircle cx='50' cy='35' r='5' fill='%23667eea'/%3E%3Cpath d='M44 33 L56 33 M44 37 L56 37' stroke='%23667eea' stroke-width='2'/%3E%3C/svg%3E">
+    
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -298,6 +303,17 @@
         .remediation-MANUAL_TRIGGERED {
             background: #111827;
             color: white;
+        }
+
+        .remediation-APPROVAL_REQUIRED {
+            background: #f59e0b;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
         }
 
         .status-badge {
@@ -785,12 +801,46 @@
             return (
                 <div className="container">
                     <div className="header">
-                        <div>
-                            <h1>
-                                <span>🔍</span>
-                                RCRA Dashboard
-                            </h1>
-                            <div className="header-subtitle">Root Cause & Remediation Assistant</div>
+                        <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
+                            <svg width="50" height="50" viewBox="0 0 100 100" style={{filter: 'drop-shadow(0 4px 8px rgba(102, 126, 234, 0.4))'}}>
+                                <defs>
+                                    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" style={{stopColor: '#667eea'}} />
+                                        <stop offset="100%" style={{stopColor: '#764ba2'}} />
+                                    </linearGradient>
+                                </defs>
+                                <circle cx="50" cy="50" r="45" fill="url(#headerGrad)" />
+                                {/* AI Brain Node */}
+                                <circle cx="50" cy="35" r="12" fill="white" opacity="0.95" />
+                                {/* Neural Network Nodes */}
+                                <circle cx="28" cy="62" r="8" fill="white" opacity="0.8" />
+                                <circle cx="72" cy="62" r="8" fill="white" opacity="0.8" />
+                                <circle cx="50" cy="75" r="6" fill="white" opacity="0.7" />
+                                {/* Connections */}
+                                <path d="M50 47 L28 62 M50 47 L72 62 M28 62 L50 75 M72 62 L50 75" stroke="white" strokeWidth="2.5" fill="none" opacity="0.85" />
+                                {/* AI Eye/Scan lines */}
+                                <circle cx="50" cy="35" r="5" fill="#667eea" />
+                                <path d="M43 32 L57 32 M43 35 L57 35 M43 38 L57 38" stroke="#667eea" strokeWidth="1.5" opacity="0.8" />
+                                {/* Pulse ring */}
+                                <circle cx="50" cy="50" r="42" fill="none" stroke="white" strokeWidth="1" opacity="0.3">
+                                    <animate attributeName="r" values="42;48;42" dur="2s" repeatCount="indefinite" />
+                                    <animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite" />
+                                </circle>
+                            </svg>
+                            <div>
+                                <h1 style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                                    RCRA Dashboard
+                                    <span style={{
+                                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                        color: 'white',
+                                        fontSize: '12px',
+                                        padding: '4px 10px',
+                                        borderRadius: '12px',
+                                        fontWeight: '600'
+                                    }}>AI-Powered</span>
+                                </h1>
+                                <div className="header-subtitle">Root Cause & Remediation Assistant</div>
+                            </div>
                         </div>
                         <div className="config-section">
                             <input 
@@ -927,6 +977,7 @@
                             remediatingId={remediatingId}
                             setSelectedIncident={setSelectedIncident}
                             fetchLogs={fetchLogs}
+                            apiEndpoint={apiEndpoint}
                         />
                     )}
 
@@ -935,6 +986,7 @@
                             config={config}
                             setConfig={setConfig}
                             onClose={() => setShowConfig(false)}
+                            apiEndpoint={apiEndpoint}
                         />
                     )}
 
@@ -1121,6 +1173,7 @@
                                                 {incident.remediationAction === 'AUTO_REMEDIATED' ? '✅ AUTO-FIXED' :
                                                  incident.remediationAction === 'FAILED' ? '⚠️ FAILED' :
                                                  incident.remediationAction === 'MANUAL_APPROVAL_REQUIRED' ? '👤 APPROVAL NEEDED' :
+                                                 incident.remediationAction === 'APPROVAL_REQUIRED' ? '⏳ NEEDS APPROVAL' :
                                                  incident.remediationAction === 'ANALYSIS_ONLY' ? '📊 ANALYSIS ONLY' :
                                                  incident.remediationAction}
                                             </span>
@@ -1142,10 +1195,50 @@
         }
 
         // Auto-remediation eligible modal
-        function RemediationEligibleModal({ incidents, onClose, onRemediate, remediatingId, setSelectedIncident, fetchLogs }) {
+        function RemediationEligibleModal({ incidents, onClose, onRemediate, remediatingId, setSelectedIncident, fetchLogs, apiEndpoint }) {
+            const [approvingId, setApprovingId] = useState(null);
+            
             const openDetails = (incident) => {
                 setSelectedIncident(incident);
                 onClose();
+            };
+
+            const handleApproveAndRemediate = async (incident) => {
+                if (!confirm('⚠️ Approve and execute remediation for this incident?\n\nThis will apply the fix immediately.')) {
+                    return;
+                }
+
+                setApprovingId(incident.incidentId);
+                try {
+                    const res = await fetch(`${apiEndpoint}/remediate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            incidentId: incident.incidentId,
+                            action: 'approve_and_remediate',
+                            triggeredBy: 'DASHBOARD_APPROVAL',
+                            approved: true
+                        })
+                    });
+
+                    const data = await res.json();
+                    if (data.success) {
+                        alert('✅ Approved and remediated!\n\n' + (data.message || 'The incident has been resolved.'));
+                        window.location.reload();
+                    } else {
+                        alert('❌ Failed: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (err) {
+                    alert('❌ Error: ' + err.message);
+                } finally {
+                    setApprovingId(null);
+                }
+            };
+
+            // Check if incident needs approval
+            const needsApproval = (incident) => {
+                return incident.remediationAction === 'APPROVAL_REQUIRED' || 
+                       incident.remediationAction === 'MANUAL_APPROVAL_REQUIRED';
             };
 
             return (
@@ -1166,7 +1259,10 @@
                         ) : (
                             <div className="incident-list">
                                 {incidents.map(incident => (
-                                    <div key={incident.incidentId} className="incident-card">
+                                    <div key={incident.incidentId} className="incident-card" style={{
+                                        borderColor: needsApproval(incident) ? '#f59e0b' : undefined,
+                                        background: needsApproval(incident) ? '#fffbeb' : undefined
+                                    }}>
                                         <div className="incident-header">
                                             <div>
                                                 <div className="incident-id">{incident.incidentId}</div>
@@ -1177,6 +1273,11 @@
                                                     <span className={`status-badge status-${incident.status || 'OPEN'}`} style={{marginLeft: '6px'}}>
                                                         {incident.status || 'OPEN'}
                                                     </span>
+                                                    {needsApproval(incident) && (
+                                                        <span className="remediation-badge remediation-APPROVAL_REQUIRED" style={{marginLeft: '6px'}}>
+                                                            ⏳ NEEDS APPROVAL
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                             {incident.ticketNumber && incident.ticketNumber !== 'N/A' && (
@@ -1192,22 +1293,82 @@
                                         <div style={{color: '#555', fontSize: '14px', marginTop: '6px'}}>
                                             {incident.rootCause}
                                         </div>
-                                        <div style={{display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap'}}>
-                                            <button 
-                                                className={`resolve-button ${incident.status === 'IN_PROGRESS' ? 'secondary' : ''}`}
-                                                onClick={() => onRemediate(incident)}
-                                                disabled={
-                                                    remediatingId === incident.incidentId ||
-                                                    incident.status === 'RESOLVED' ||
-                                                    incident.status === 'IN_PROGRESS'
-                                                }
-                                            >
-                                                {incident.status === 'IN_PROGRESS'
-                                                    ? '⏳ In progress'
-                                                    : remediatingId === incident.incidentId
+                                        
+                                        {/* Show approval banner for incidents needing approval */}
+                                        {needsApproval(incident) && incident.status !== 'RESOLVED' && (
+                                            <div style={{
+                                                marginTop: '10px',
+                                                padding: '10px',
+                                                background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                                                borderRadius: '8px',
+                                                border: '1px solid #f59e0b'
+                                            }}>
+                                                <div style={{fontSize: '13px', color: '#92400e', marginBottom: '8px'}}>
+                                                    ⚠️ <strong>Approval Required:</strong> This scenario requires manual approval before remediation.
+                                                </div>
+                                                <button
+                                                    onClick={() => handleApproveAndRemediate(incident)}
+                                                    disabled={approvingId === incident.incidentId}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '10px 16px',
+                                                        background: approvingId === incident.incidentId ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '6px',
+                                                        cursor: approvingId === incident.incidentId ? 'not-allowed' : 'pointer',
+                                                        fontSize: '14px',
+                                                        fontWeight: '700'
+                                                    }}
+                                                >
+                                                    {approvingId === incident.incidentId ? '⏳ Approving...' : '✅ Approve & Remediate Now'}
+                                                </button>
+                                            </div>
+                                        )}
+                                        
+                                        <div style={{display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap', alignItems: 'center'}}>
+                                            {/* Show status indicator based on incident state */}
+                                            {incident.status === 'RESOLVED' ? (
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    padding: '8px 16px',
+                                                    background: '#d1fae5',
+                                                    color: '#065f46',
+                                                    borderRadius: '8px',
+                                                    fontSize: '14px',
+                                                    fontWeight: '600',
+                                                    border: '1px solid #10b981'
+                                                }}>
+                                                    ✅ Remediated
+                                                </div>
+                                            ) : incident.status === 'IN_PROGRESS' ? (
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    padding: '8px 16px',
+                                                    background: '#e0e7ff',
+                                                    color: '#3730a3',
+                                                    borderRadius: '8px',
+                                                    fontSize: '14px',
+                                                    fontWeight: '600',
+                                                    border: '1px solid #6366f1'
+                                                }}>
+                                                    ⏳ In Progress
+                                                </div>
+                                            ) : !needsApproval(incident) && (
+                                                <button 
+                                                    className="resolve-button"
+                                                    onClick={() => onRemediate(incident)}
+                                                    disabled={remediatingId === incident.incidentId}
+                                                >
+                                                    {remediatingId === incident.incidentId
                                                         ? '⏳ Remediating...'
                                                         : '🚀 Remediate now'}
-                                            </button>
+                                                </button>
+                                            )}
                                             <button 
                                                 className="filter-btn" 
                                                 onClick={() => openDetails(incident)}
@@ -1236,53 +1397,275 @@
         }
 
         // Configuration modal for auto-remediation scenarios
-        function ConfigModal({ config, setConfig, onClose }) {
+        function ConfigModal({ config, setConfig, onClose, apiEndpoint }) {
+            const [saving, setSaving] = useState(false);
+            const [loadingConfig, setLoadingConfig] = useState(true);
+            const [localConfig, setLocalConfig] = useState(config);
+
             const scenarioLabels = {
-                lambdaTimeout: "Lambda timeout",
-                outOfMemory: "Out of memory",
-                throttling: "Throttling / Rate limit",
-                connectionPool: "Connection pool exhaustion",
-                cacheCorruption: "Cache corruption/invalid cache"
+                lambdaTimeout: { label: "Lambda Timeout", icon: "⏱️", desc: "Increase timeout when Lambda functions time out" },
+                outOfMemory: { label: "Out of Memory", icon: "💾", desc: "Increase memory allocation when OOM errors occur" },
+                connectionPool: { label: "DB Connection Pool Exhausted", icon: "🔌", desc: "Restart Lambda to reset connection pool" },
+                throttling: { label: "API Gateway Throttling", icon: "🚦", desc: "Create CloudWatch alarm and notify for quota increase" },
+                cacheCorruption: { label: "Cache Corruption", icon: "🗄️", desc: "Flush and rebuild cache" },
+                healthCheck: { label: "Health Check Failure", icon: "💓", desc: "Restart unhealthy services" },
+                diskFull: { label: "/tmp Disk Full", icon: "💿", desc: "Clean up temporary files" },
+                authFailure: { label: "Auth/IAM Failure", icon: "🔐", desc: "Notify for IAM permission review" },
+                dependencyTimeout: { label: "Upstream Dependency Timeout", icon: "🔗", desc: "Implement circuit breaker pattern" },
+                dlqEscalation: { label: "SQS DLQ Escalation", icon: "📬", desc: "Process dead letter queue messages" }
             };
 
-            const toggle = (key) => {
-                const next = { ...config, [key]: !config[key] };
-                setConfig(next);
-                localStorage.setItem('rcraAutoRemediationConfig', JSON.stringify(next));
+            // Load config from API on mount
+            useEffect(() => {
+                const loadConfig = async () => {
+                    if (!apiEndpoint) {
+                        setLoadingConfig(false);
+                        return;
+                    }
+                    try {
+                        const res = await fetch(`${apiEndpoint}/config/auto-remediation`);
+                        const data = await res.json();
+                        if (data.success && data.config) {
+                            setLocalConfig(data.config);
+                            setConfig(data.config);
+                        }
+                    } catch (err) {
+                        console.error('Failed to load config:', err);
+                    } finally {
+                        setLoadingConfig(false);
+                    }
+                };
+                loadConfig();
+            }, [apiEndpoint]);
+
+            const toggle = async (key) => {
+                const next = { ...localConfig, [key]: !localConfig[key] };
+                setLocalConfig(next);
+            };
+
+            const saveConfig = async () => {
+                if (!apiEndpoint) {
+                    alert('Please configure API endpoint first');
+                    return;
+                }
+                setSaving(true);
+                try {
+                    const res = await fetch(`${apiEndpoint}/config/auto-remediation`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ config: localConfig })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setConfig(localConfig);
+                        alert('✅ Configuration saved successfully!');
+                        onClose();
+                    } else {
+                        alert('Failed to save: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (err) {
+                    alert('Failed to save configuration: ' + err.message);
+                } finally {
+                    setSaving(false);
+                }
             };
 
             return (
                 <div className="modal" onClick={onClose}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{maxWidth: '700px'}}>
                         <div className="modal-header">
                             <div>
-                                <h2>Auto-Remediation Configuration</h2>
-                                <div className="header-subtitle">Enable scenarios that can self-heal when detected.</div>
+                                <h2>⚙️ Auto-Remediation Configuration</h2>
+                                <div className="header-subtitle">Configure which scenarios can auto-remediate vs require approval.</div>
                             </div>
                             <button className="modal-close" onClick={onClose}>×</button>
                         </div>
-                        <div className="incident-list">
-                            {Object.entries(scenarioLabels).map(([key, label]) => (
-                                <div key={key} className="incident-card" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                                    <div>
-                                        <div className="incident-summary">{label}</div>
-                                        <div className="incident-timestamp" style={{marginTop: '4px'}}>
-                                            {config[key] ? 'Eligible for auto-remediation when detected.' : 'Will require manual remediation.'}
-                                        </div>
+                        
+                        {loadingConfig ? (
+                            <div className="loading">Loading configuration...</div>
+                        ) : (
+                            <>
+                                <div style={{display: 'flex', gap: '20px', marginBottom: '15px', padding: '10px', background: '#f0f4ff', borderRadius: '8px'}}>
+                                    <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                                        <span style={{background: '#10b981', color: 'white', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700'}}>✅ AUTO</span>
+                                        <span style={{fontSize: '13px', color: '#666'}}>Remediation happens automatically</span>
                                     </div>
-                                    <input 
-                                        type="checkbox" 
-                                        checked={!!config[key]} 
-                                        onChange={() => toggle(key)}
-                                        style={{width: '18px', height: '18px'}}
-                                    />
+                                    <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                                        <span style={{background: '#f59e0b', color: 'white', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700'}}>👤 APPROVAL</span>
+                                        <span style={{fontSize: '13px', color: '#666'}}>Requires manual approval first</span>
+                                    </div>
                                 </div>
-                            ))}
-                        </div>
-                        <div style={{marginTop: '10px', color: '#666', fontSize: '13px'}}>
-                            These preferences are stored locally in your browser and checked before triggering remediation.
+
+                                <div className="incident-list" style={{maxHeight: '400px', overflowY: 'auto'}}>
+                                    {Object.entries(scenarioLabels).map(([key, info]) => (
+                                        <div key={key} className="incident-card" style={{
+                                            display: 'flex', 
+                                            justifyContent: 'space-between', 
+                                            alignItems: 'center',
+                                            background: localConfig[key] ? '#f0fdf4' : '#fffbeb',
+                                            borderColor: localConfig[key] ? '#86efac' : '#fcd34d'
+                                        }}>
+                                            <div style={{flex: 1}}>
+                                                <div className="incident-summary" style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                                                    <span style={{fontSize: '20px'}}>{info.icon}</span>
+                                                    {info.label}
+                                                    <span style={{
+                                                        background: localConfig[key] ? '#10b981' : '#f59e0b',
+                                                        color: 'white',
+                                                        padding: '2px 8px',
+                                                        borderRadius: '10px',
+                                                        fontSize: '10px',
+                                                        fontWeight: '700'
+                                                    }}>
+                                                        {localConfig[key] ? '✅ AUTO' : '👤 APPROVAL'}
+                                                    </span>
+                                                </div>
+                                                <div className="incident-timestamp" style={{marginTop: '4px'}}>
+                                                    {info.desc}
+                                                </div>
+                                            </div>
+                                            <label style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
+                                                <span style={{fontSize: '12px', color: '#666', whiteSpace: 'nowrap'}}>
+                                                    {localConfig[key] ? 'Auto' : 'Manual'}
+                                                </span>
+                                                <div 
+                                                    onClick={() => toggle(key)}
+                                                    style={{
+                                                        width: '44px',
+                                                        height: '24px',
+                                                        background: localConfig[key] ? '#10b981' : '#d1d5db',
+                                                        borderRadius: '12px',
+                                                        position: 'relative',
+                                                        cursor: 'pointer',
+                                                        transition: 'background 0.3s'
+                                                    }}
+                                                >
+                                                    <div style={{
+                                                        width: '20px',
+                                                        height: '20px',
+                                                        background: 'white',
+                                                        borderRadius: '50%',
+                                                        position: 'absolute',
+                                                        top: '2px',
+                                                        left: localConfig[key] ? '22px' : '2px',
+                                                        transition: 'left 0.3s',
+                                                        boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                                                    }}/>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div style={{marginTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                    <div style={{color: '#666', fontSize: '13px'}}>
+                                        💡 Changes are saved to the server and apply to all new incidents.
+                                    </div>
+                                    <button 
+                                        onClick={saveConfig}
+                                        disabled={saving}
+                                        style={{
+                                            padding: '12px 24px',
+                                            background: '#667eea',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '8px',
+                                            cursor: 'pointer',
+                                            fontWeight: '600',
+                                            fontSize: '14px'
+                                        }}
+                                    >
+                                        {saving ? '⏳ Saving...' : '💾 Save Configuration'}
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // Approve Button Component for incidents requiring approval
+        function ApproveButton({ incident, apiEndpoint, onApproved }) {
+            const [approving, setApproving] = useState(false);
+
+            const handleApprove = async () => {
+                if (!confirm('⚠️ Are you sure you want to approve auto-remediation for this incident?\n\nThis will execute the remediation action immediately.')) {
+                    return;
+                }
+
+                setApproving(true);
+                try {
+                    const res = await fetch(`${apiEndpoint}/remediate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            incidentId: incident.incidentId,
+                            action: 'approve_and_remediate',
+                            triggeredBy: 'DASHBOARD_APPROVAL',
+                            approved: true
+                        })
+                    });
+
+                    const data = await res.json();
+                    if (data.success) {
+                        alert('✅ Remediation approved and triggered!\n\nThe incident will be processed shortly.');
+                        if (onApproved) onApproved();
+                    } else {
+                        alert('❌ Failed to approve: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (err) {
+                    alert('❌ Error: ' + err.message);
+                } finally {
+                    setApproving(false);
+                }
+            };
+
+            return (
+                <div style={{
+                    marginTop: '15px',
+                    padding: '15px',
+                    background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                    borderRadius: '12px',
+                    border: '2px solid #f59e0b'
+                }}>
+                    <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px'}}>
+                        <span style={{fontSize: '24px'}}>⏳</span>
+                        <div>
+                            <div style={{fontWeight: '700', color: '#92400e', fontSize: '16px'}}>
+                                Awaiting Approval
+                            </div>
+                            <div style={{fontSize: '13px', color: '#a16207'}}>
+                                This incident requires manual approval before remediation can proceed.
+                            </div>
                         </div>
                     </div>
+                    <button
+                        onClick={handleApprove}
+                        disabled={approving}
+                        style={{
+                            width: '100%',
+                            padding: '12px 20px',
+                            background: approving ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: approving ? 'not-allowed' : 'pointer',
+                            fontSize: '15px',
+                            fontWeight: '700',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                        }}
+                    >
+                        {approving ? (
+                            <>⏳ Approving...</>
+                        ) : (
+                            <>✅ Approve & Remediate Now</>
+                        )}
+                    </button>
                 </div>
             );
         }
@@ -1397,6 +1780,13 @@
                                     <div style={{marginTop: '10px', color: '#065f46', fontSize: '14px'}}>
                                         ✅ Resolved by {details.resolvedBy || 'Unknown'} at {details.resolvedAt ? new Date(details.resolvedAt).toLocaleString() : 'Unknown time'}
                                     </div>
+                                )}
+                                {details && details.remediation?.actionTaken === 'APPROVAL_REQUIRED' && details.status !== 'RESOLVED' && (
+                                    <ApproveButton 
+                                        incident={details} 
+                                        apiEndpoint={apiEndpoint}
+                                        onApproved={() => window.location.reload()}
+                                    />
                                 )}
                             </div>
                             <button className="modal-close" onClick={onClose}>×</button>

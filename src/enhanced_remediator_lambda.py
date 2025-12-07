@@ -43,6 +43,57 @@ def is_critical_function(log_group):
         return False
 
 
+def get_auto_remediation_config():
+    """Get auto-remediation configuration from DynamoDB"""
+    try:
+        response = table.get_item(Key={"IncidentId": "CONFIG_AUTO_REMEDIATION"})
+        item = response.get("Item", {})
+        
+        # Default config - scenarios that auto-remediate by default
+        default_config = {
+            "lambdaTimeout": True,
+            "outOfMemory": True,
+            "throttling": False,
+            "connectionPool": False,
+            "cacheCorruption": False,
+            "healthCheck": False,
+            "diskFull": False,
+            "authFailure": False,
+            "dependencyTimeout": False,
+            "dlqEscalation": False
+        }
+        
+        # Merge saved config with defaults
+        saved_config = item.get("scenarios", {})
+        merged_config = {**default_config, **saved_config}
+        
+        print(f"[REMEDIATOR] Auto-remediation config: {merged_config}")
+        return merged_config
+    except Exception as e:
+        print(f"[REMEDIATOR] Error getting config: {str(e)}")
+        # Return default config on error
+        return {
+            "lambdaTimeout": True,
+            "outOfMemory": True,
+            "throttling": False,
+            "connectionPool": False,
+            "cacheCorruption": False,
+            "healthCheck": False,
+            "diskFull": False,
+            "authFailure": False,
+            "dependencyTimeout": False,
+            "dlqEscalation": False
+        }
+
+
+def is_scenario_auto_enabled(scenario):
+    """Check if a scenario is enabled for auto-remediation"""
+    config = get_auto_remediation_config()
+    enabled = config.get(scenario, False)
+    print(f"[REMEDIATOR] Scenario '{scenario}' auto-remediation enabled: {enabled}")
+    return enabled
+
+
 def detect_scenario(raw_message, analysis):
     """Identify scenario type from message/analysis to drive eligibility."""
     text = f"{raw_message} {json.dumps(analysis)}".lower()
@@ -109,6 +160,21 @@ def handler(event, context):
                 "details": f"This function is marked as CRITICAL and requires manual approval before remediation. Please review the suggested remediation steps and apply manually after approval.",
                 "awsActions": [],
                 "criticalFunction": True,
+                "recurrenceCount": recurrence,
+                "scenario": scenario,
+            }
+        }
+    
+    # Check if this scenario type is enabled for auto-remediation
+    if not is_scenario_auto_enabled(scenario):
+        print(f"[REMEDIATOR] Scenario '{scenario}' requires approval - auto-remediation disabled in config")
+        return {
+            "remediationResult": {
+                "autoRemediationEligible": True,  # Eligible but requires approval
+                "remediationActionTaken": "APPROVAL_REQUIRED",
+                "details": f"Auto-remediation for '{scenario}' scenario is disabled in configuration. Manual approval required before remediation can proceed.",
+                "awsActions": [],
+                "requiresApproval": True,
                 "recurrenceCount": recurrence,
                 "scenario": scenario,
             }

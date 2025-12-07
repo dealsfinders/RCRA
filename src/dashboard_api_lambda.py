@@ -11,6 +11,7 @@ table_name = os.environ.get("TABLE_NAME", "RCRARootCauseTable")
 table = dynamodb.Table(table_name)
 topic_arn = os.environ.get("TOPIC_ARN")
 sns = boto3.client("sns") if topic_arn else None
+logs_client = boto3.client("logs")
 
 
 class DecimalEncoder(json.JSONEncoder):
@@ -116,6 +117,18 @@ def handler(event, context):
             elif http_method == "POST":
                 body = json.loads(event.get("body", "{}"))
                 response_data = update_critical_functions(body)
+            else:
+                return {
+                    "statusCode": 405,
+                    "headers": cors_headers(),
+                    "body": json.dumps({"error": "Method not allowed"}),
+                }
+        elif path == "/config/auto-remediation" or path.endswith("/config/auto-remediation"):
+            if http_method == "GET":
+                response_data = get_auto_remediation_config()
+            elif http_method == "POST":
+                body = json.loads(event.get("body", "{}"))
+                response_data = update_auto_remediation_config(body)
             else:
                 return {
                     "statusCode": 405,
@@ -457,8 +470,9 @@ def trigger_dummy_error(query_params):
 def trigger_remediation(body):
     """Manually trigger remediation for an incident"""
     incident_id = body.get("incidentId")
-    action = body.get("action")  # e.g., "restart", "increase_timeout", "increase_memory"
+    action = body.get("action")  # e.g., "restart", "increase_timeout", "increase_memory", "approve_and_remediate"
     triggered_by = body.get("triggeredBy", "DASHBOARD_MANUAL_REMEDIATION")
+    approved = body.get("approved", False)
     
     if not incident_id:
         return {"error": "incidentId is required"}
@@ -471,7 +485,68 @@ def trigger_remediation(body):
         if not item:
             return {"error": "Incident not found"}
         
-        # For now, simulate remediation success and mark ticket resolved
+        log_group = item.get("LogGroup", "")
+        raw_message = item.get("RawLogMessage", "").lower()
+        current_remediation = item.get("RemediationResult", {})
+        scenario = current_remediation.get("scenario", "general")
+        
+        # If this is an approval action, perform actual remediation
+        if action == "approve_and_remediate" and approved:
+            remediation_result = perform_approved_remediation(log_group, raw_message, scenario, item)
+            
+            # Determine final status based on remediation result
+            final_status = "RESOLVED" if remediation_result.get("success") else "OPEN"
+            action_taken = remediation_result.get("actionTaken", "APPROVED_REMEDIATION_ATTEMPTED")
+            
+            remediation_update = {
+                "autoRemediationEligible": True,
+                "remediationActionTaken": action_taken,
+                "details": remediation_result.get("details", "Approved remediation executed"),
+                "awsActions": remediation_result.get("awsActions", []),
+                "approvedBy": triggered_by,
+                "approvedAt": datetime.utcnow().isoformat() + "Z",
+                "scenario": scenario,
+            }
+            
+            update_expression = "SET RemediationResult = :rem, #status = :status"
+            expression_values = {
+                ":rem": remediation_update,
+                ":status": final_status,
+            }
+            
+            if final_status == "RESOLVED":
+                update_expression += ", ResolvedAt = :resolvedAt, ResolvedBy = :resolvedBy"
+                expression_values[":resolvedAt"] = datetime.utcnow().isoformat() + "Z"
+                expression_values[":resolvedBy"] = triggered_by
+            
+            table.update_item(
+                Key={"IncidentId": incident_id},
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames={"#status": "Status"},
+                ExpressionAttributeValues=expression_values,
+            )
+            
+            # Send notification
+            item["RemediationResult"] = remediation_update
+            item["Status"] = final_status
+            publish_stage_notification(
+                stage="Approved Remediation Complete" if final_status == "RESOLVED" else "Remediation Attempted",
+                item=item,
+                status=final_status,
+                details=remediation_update["details"],
+            )
+            
+            return {
+                "success": remediation_result.get("success", True),
+                "incidentId": incident_id,
+                "action": action_taken,
+                "status": final_status,
+                "message": remediation_result.get("details", "Approved remediation executed"),
+                "awsActions": remediation_result.get("awsActions", []),
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+        
+        # Standard manual trigger (non-approval flow)
         remediation_action = (action or "MANUAL_TRIGGERED").upper()
         remediation_update = {
             "autoRemediationEligible": True,
@@ -514,6 +589,182 @@ def trigger_remediation(body):
         return {
             "success": False,
             "error": str(e)
+        }
+
+
+def perform_approved_remediation(log_group, raw_message, scenario, item):
+    """Perform actual remediation after approval"""
+    # Extract function name from log group
+    function_name = log_group.replace("/aws/lambda/", "") if log_group.startswith("/aws/lambda/") else None
+    
+    if not function_name:
+        return {
+            "success": False,
+            "actionTaken": "APPROVED_BUT_NO_FUNCTION",
+            "details": "Could not extract function name from log group for remediation",
+            "awsActions": []
+        }
+    
+    try:
+        # Determine remediation based on scenario/error type
+        if scenario == "lambdaTimeout" or "timeout" in raw_message:
+            return remediate_timeout_approved(function_name)
+        elif scenario == "outOfMemory" or "memory" in raw_message:
+            return remediate_memory_approved(function_name)
+        elif scenario == "connectionPool" or ("connection" in raw_message and "pool" in raw_message):
+            return remediate_connection_pool_approved(function_name)
+        else:
+            # Generic restart for unknown scenarios
+            return remediate_restart_approved(function_name)
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "actionTaken": "APPROVED_REMEDIATION_FAILED",
+            "details": f"Remediation failed: {str(e)}",
+            "awsActions": []
+        }
+
+
+def remediate_timeout_approved(function_name):
+    """Increase Lambda timeout after approval"""
+    try:
+        response = lambda_client.get_function_configuration(FunctionName=function_name)
+        current_timeout = response['Timeout']
+        new_timeout = min(current_timeout * 2, 900)
+        
+        if new_timeout > current_timeout:
+            lambda_client.update_function_configuration(
+                FunctionName=function_name,
+                Timeout=new_timeout
+            )
+            return {
+                "success": True,
+                "actionTaken": "APPROVED_AUTO_REMEDIATED",
+                "details": f"✅ Approved: Increased Lambda timeout from {current_timeout}s to {new_timeout}s",
+                "awsActions": [{
+                    "service": "lambda",
+                    "action": "update_function_configuration",
+                    "resource": function_name,
+                    "changes": {"timeout_before": current_timeout, "timeout_after": new_timeout}
+                }]
+            }
+        else:
+            return {
+                "success": True,
+                "actionTaken": "APPROVED_LIMIT_REACHED",
+                "details": f"Timeout already at maximum ({current_timeout}s). Manual optimization needed.",
+                "awsActions": []
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "actionTaken": "APPROVED_REMEDIATION_FAILED",
+            "details": f"Failed to increase timeout: {str(e)}",
+            "awsActions": []
+        }
+
+
+def remediate_memory_approved(function_name):
+    """Increase Lambda memory after approval"""
+    try:
+        response = lambda_client.get_function_configuration(FunctionName=function_name)
+        current_memory = response['MemorySize']
+        new_memory = min(current_memory * 2, 10240)
+        
+        if new_memory > current_memory:
+            lambda_client.update_function_configuration(
+                FunctionName=function_name,
+                MemorySize=new_memory
+            )
+            return {
+                "success": True,
+                "actionTaken": "APPROVED_AUTO_REMEDIATED",
+                "details": f"✅ Approved: Increased Lambda memory from {current_memory}MB to {new_memory}MB",
+                "awsActions": [{
+                    "service": "lambda",
+                    "action": "update_function_configuration",
+                    "resource": function_name,
+                    "changes": {"memory_before": current_memory, "memory_after": new_memory}
+                }]
+            }
+        else:
+            return {
+                "success": True,
+                "actionTaken": "APPROVED_LIMIT_REACHED",
+                "details": f"Memory already at maximum ({current_memory}MB). Manual optimization needed.",
+                "awsActions": []
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "actionTaken": "APPROVED_REMEDIATION_FAILED",
+            "details": f"Failed to increase memory: {str(e)}",
+            "awsActions": []
+        }
+
+
+def remediate_connection_pool_approved(function_name):
+    """Restart Lambda to reset connection pool after approval"""
+    try:
+        response = lambda_client.get_function_configuration(FunctionName=function_name)
+        env_vars = response.get('Environment', {}).get('Variables', {})
+        env_vars['APPROVED_RESTART'] = datetime.utcnow().isoformat()
+        
+        lambda_client.update_function_configuration(
+            FunctionName=function_name,
+            Environment={'Variables': env_vars}
+        )
+        
+        return {
+            "success": True,
+            "actionTaken": "APPROVED_AUTO_REMEDIATED",
+            "details": f"✅ Approved: Restarted Lambda {function_name} to reset connection pool",
+            "awsActions": [{
+                "service": "lambda",
+                "action": "restart_function",
+                "resource": function_name,
+                "changes": {"method": "environment_variable_update", "timestamp": datetime.utcnow().isoformat()}
+            }]
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "actionTaken": "APPROVED_REMEDIATION_FAILED",
+            "details": f"Failed to restart Lambda: {str(e)}",
+            "awsActions": []
+        }
+
+
+def remediate_restart_approved(function_name):
+    """Generic Lambda restart after approval"""
+    try:
+        response = lambda_client.get_function_configuration(FunctionName=function_name)
+        env_vars = response.get('Environment', {}).get('Variables', {})
+        env_vars['APPROVED_RESTART'] = datetime.utcnow().isoformat()
+        
+        lambda_client.update_function_configuration(
+            FunctionName=function_name,
+            Environment={'Variables': env_vars}
+        )
+        
+        return {
+            "success": True,
+            "actionTaken": "APPROVED_AUTO_REMEDIATED",
+            "details": f"✅ Approved: Restarted Lambda {function_name}",
+            "awsActions": [{
+                "service": "lambda",
+                "action": "restart_function",
+                "resource": function_name,
+                "changes": {"method": "environment_variable_update"}
+            }]
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "actionTaken": "APPROVED_REMEDIATION_FAILED",
+            "details": f"Failed to restart Lambda: {str(e)}",
+            "awsActions": []
         }
 
 
@@ -570,6 +821,80 @@ def update_critical_functions(body):
             "success": True,
             "criticalFunctions": current_functions,
             "message": f"Critical functions updated. Total: {len(current_functions)}"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+def get_auto_remediation_config():
+    """Get auto-remediation configuration for each scenario type"""
+    try:
+        response = table.get_item(Key={"IncidentId": "CONFIG_AUTO_REMEDIATION"})
+        item = response.get("Item", {})
+        
+        # Default config - scenarios that auto-remediate by default
+        default_config = {
+            "lambdaTimeout": True,
+            "outOfMemory": True,
+            "throttling": False,
+            "connectionPool": False,
+            "cacheCorruption": False,
+            "healthCheck": False,
+            "diskFull": False,
+            "authFailure": False,
+            "dependencyTimeout": False,
+            "dlqEscalation": False
+        }
+        
+        # Merge saved config with defaults
+        saved_config = item.get("scenarios", {})
+        merged_config = {**default_config, **saved_config}
+        
+        return {
+            "success": True,
+            "config": merged_config,
+            "lastUpdated": item.get("CreatedAt", None)
+        }
+    except Exception as e:
+        print(f"[ERROR] Failed to get auto-remediation config: {str(e)}")
+        return {
+            "success": True,
+            "config": {
+                "lambdaTimeout": True,
+                "outOfMemory": True,
+                "throttling": False,
+                "connectionPool": False,
+                "cacheCorruption": False,
+                "healthCheck": False,
+                "diskFull": False,
+                "authFailure": False,
+                "dependencyTimeout": False,
+                "dlqEscalation": False
+            },
+            "lastUpdated": None
+        }
+
+
+def update_auto_remediation_config(body):
+    """Update auto-remediation configuration"""
+    config = body.get("config", {})
+    
+    try:
+        # Save config to DynamoDB
+        table.put_item(Item={
+            "IncidentId": "CONFIG_AUTO_REMEDIATION",
+            "scenarios": config,
+            "CreatedAt": datetime.utcnow().isoformat() + "Z"
+        })
+        
+        return {
+            "success": True,
+            "config": config,
+            "message": "Auto-remediation configuration updated successfully"
         }
         
     except Exception as e:
