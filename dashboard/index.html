@@ -279,6 +279,16 @@
             background: #10b981;
             color: white;
         }
+        
+        .remediation-AUTO_FIXED {
+            background: linear-gradient(135deg, #06b6d4, #0891b2);
+            color: white;
+        }
+        
+        .remediation-FIXED {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
 
         .remediation-FAILED {
             background: #ef4444;
@@ -1129,9 +1139,14 @@
                                     </div>
                                     {incident.remediationAction && incident.remediationAction !== 'NONE' && (
                                         <div style={{marginTop: '5px'}}>
-                                            <span className={`remediation-badge ${incident.status === 'RESOLVED' ? 'remediation-AUTO_REMEDIATED' : `remediation-${incident.remediationAction}`}`}>
-                                                {incident.status === 'RESOLVED' ? '✅ FIXED' :
-                                                 incident.remediationAction === 'AUTO_REMEDIATED' ? '✅ AUTO-FIXED' :
+                                            <span className={`remediation-badge ${
+                                                incident.status === 'RESOLVED' && incident.remediationAction === 'AUTO_REMEDIATED' ? 'remediation-AUTO_FIXED' :
+                                                incident.status === 'RESOLVED' ? 'remediation-FIXED' :
+                                                `remediation-${incident.remediationAction}`
+                                            }`}>
+                                                {incident.status === 'RESOLVED' && incident.remediationAction === 'AUTO_REMEDIATED' ? '🤖 AUTO-FIXED' :
+                                                 incident.status === 'RESOLVED' ? '✅ FIXED' :
+                                                 incident.remediationAction === 'AUTO_REMEDIATED' ? '🤖 AUTO-FIXING' :
                                                  incident.remediationAction === 'FAILED' ? '⚠️ FAILED' :
                                                  incident.remediationAction === 'MANUAL_APPROVAL_REQUIRED' ? '👤 APPROVAL' :
                                                  incident.remediationAction === 'APPROVAL_REQUIRED' ? '⏳ NEEDS APPROVAL' :
@@ -1255,9 +1270,14 @@
                                             )}
                                             {incident.remediationAction && incident.remediationAction !== 'NONE' && (
                                                 <div style={{marginTop: '8px'}}>
-                                                    <span className={`remediation-badge ${incident.status === 'RESOLVED' ? 'remediation-AUTO_REMEDIATED' : `remediation-${incident.remediationAction}`}`}>
-                                                {incident.status === 'RESOLVED' ? '✅ FIXED' :
-                                                 incident.remediationAction === 'AUTO_REMEDIATED' ? '✅ AUTO-FIXED' :
+                                                    <span className={`remediation-badge ${
+                                                        incident.status === 'RESOLVED' && incident.remediationAction === 'AUTO_REMEDIATED' ? 'remediation-AUTO_FIXED' :
+                                                        incident.status === 'RESOLVED' ? 'remediation-FIXED' :
+                                                        `remediation-${incident.remediationAction}`
+                                                    }`}>
+                                                {incident.status === 'RESOLVED' && incident.remediationAction === 'AUTO_REMEDIATED' ? '🤖 AUTO-FIXED' :
+                                                 incident.status === 'RESOLVED' ? '✅ FIXED' :
+                                                 incident.remediationAction === 'AUTO_REMEDIATED' ? '🤖 AUTO-FIXING' :
                                                  incident.remediationAction === 'FAILED' ? '⚠️ FAILED' :
                                                  incident.remediationAction === 'MANUAL_APPROVAL_REQUIRED' ? '👤 APPROVAL NEEDED' :
                                                  incident.remediationAction === 'APPROVAL_REQUIRED' ? '⏳ NEEDS APPROVAL' :
