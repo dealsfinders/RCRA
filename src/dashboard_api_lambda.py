@@ -932,37 +932,46 @@ def get_error_frequency_count(error_signature, log_group):
 
 
 def get_error_occurrences(error_signature, log_group):
-    """Get list of all occurrences of this error in last 24 hours"""
-    if not error_signature:
-        return []
-    
+    """Get list of related incidents - by error signature or same log group"""
     try:
         from datetime import timedelta
         from boto3.dynamodb.conditions import Attr
         
         now = datetime.utcnow()
-        last_24h = now - timedelta(hours=24)
-        last_24h_str = last_24h.isoformat() + "Z"
+        # Extended to 7 days for better related incident discovery
+        last_week = now - timedelta(days=7)
+        last_week_str = last_week.isoformat() + "Z"
         
-        response = table.scan(
-            FilterExpression=Attr('ErrorSignature').eq(error_signature) & 
-                           Attr('CreatedAt').gt(last_24h_str) &
-                           Attr('LogGroup').eq(log_group)
-        )
+        items = []
         
-        items = response.get('Items', [])
+        # First try to find incidents with same error signature (if available)
+        if error_signature:
+            response = table.scan(
+                FilterExpression=Attr('ErrorSignature').eq(error_signature) & 
+                               Attr('CreatedAt').gt(last_week_str)
+            )
+            items = response.get('Items', [])
+        
+        # If no matches by signature, find incidents from same log group
+        if not items and log_group:
+            response = table.scan(
+                FilterExpression=Attr('LogGroup').eq(log_group) & 
+                               Attr('CreatedAt').gt(last_week_str)
+            )
+            items = response.get('Items', [])
+        
         occurrences = []
-        
         for item in items:
             occurrences.append({
                 'timestamp': item.get('CreatedAt'),
                 'incidentId': item.get('IncidentId'),
                 'ticketNumber': item.get('TicketNumber'),
-                'status': item.get('Status', 'UNKNOWN')
+                'status': item.get('Status', 'UNKNOWN'),
+                'summary': item.get('AnalysisResult', {}).get('summary', 'N/A')[:100]
             })
         
         # Sort by timestamp descending
-        occurrences.sort(key=lambda x: x['timestamp'], reverse=True)
+        occurrences.sort(key=lambda x: x['timestamp'] or '', reverse=True)
         
         return occurrences[:10]  # Return last 10 occurrences
     except Exception as e:
