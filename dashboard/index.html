@@ -584,13 +584,174 @@
             font-size: 12px;
             font-weight: 600;
         }
+        
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 400px;
+        }
+        
+        .toast {
+            padding: 16px 20px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            animation: slideIn 0.3s ease-out;
+            backdrop-filter: blur(10px);
+        }
+        
+        .toast-success {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+        
+        .toast-error {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+        
+        .toast-warning {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+        }
+        
+        .toast-info {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .toast-icon {
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+        
+        .toast-content {
+            flex: 1;
+        }
+        
+        .toast-title {
+            font-weight: 700;
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+        
+        .toast-message {
+            font-size: 13px;
+            opacity: 0.95;
+            line-height: 1.4;
+        }
+        
+        .toast-close {
+            background: none;
+            border: none;
+            color: white;
+            opacity: 0.7;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0;
+            margin-left: 8px;
+            transition: opacity 0.2s;
+        }
+        
+        .toast-close:hover {
+            opacity: 1;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .toast-exit {
+            animation: slideOut 0.3s ease-in forwards;
+        }
+        
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useCallback } = React;
+        
+        // Toast Context for global notifications
+        const ToastContext = React.createContext();
+        
+        function ToastProvider({ children }) {
+            const [toasts, setToasts] = useState([]);
+            
+            const addToast = useCallback((type, title, message, duration = 5000) => {
+                const id = Date.now();
+                setToasts(prev => [...prev, { id, type, title, message }]);
+                
+                if (duration > 0) {
+                    setTimeout(() => {
+                        setToasts(prev => prev.filter(t => t.id !== id));
+                    }, duration);
+                }
+            }, []);
+            
+            const removeToast = useCallback((id) => {
+                setToasts(prev => prev.filter(t => t.id !== id));
+            }, []);
+            
+            const toast = {
+                success: (title, message) => addToast('success', title, message),
+                error: (title, message) => addToast('error', title, message, 8000),
+                warning: (title, message) => addToast('warning', title, message, 6000),
+                info: (title, message) => addToast('info', title, message),
+            };
+            
+            return (
+                <ToastContext.Provider value={toast}>
+                    {children}
+                    <div className="toast-container">
+                        {toasts.map(t => (
+                            <div key={t.id} className={`toast toast-${t.type}`}>
+                                <span className="toast-icon">
+                                    {t.type === 'success' && '✅'}
+                                    {t.type === 'error' && '❌'}
+                                    {t.type === 'warning' && '⚠️'}
+                                    {t.type === 'info' && 'ℹ️'}
+                                </span>
+                                <div className="toast-content">
+                                    <div className="toast-title">{t.title}</div>
+                                    {t.message && <div className="toast-message">{t.message}</div>}
+                                </div>
+                                <button className="toast-close" onClick={() => removeToast(t.id)}>×</button>
+                            </div>
+                        ))}
+                    </div>
+                </ToastContext.Provider>
+            );
+        }
+        
+        const useToast = () => React.useContext(ToastContext);
+        
         const SCENARIO_OPTIONS = [
             { value: 'random', label: 'Random mix' },
             { value: 'timeout', label: 'Lambda timeout' },
@@ -607,6 +768,7 @@
 
         // Main Dashboard Component
         function Dashboard() {
+            const toast = useToast();
             const [apiEndpoint, setApiEndpoint] = useState(localStorage.getItem('rcraApiEndpoint') || '');
             const [tempEndpoint, setTempEndpoint] = useState(apiEndpoint);
             const [statistics, setStatistics] = useState(null);
@@ -678,7 +840,7 @@
 
             const triggerTestError = async () => {
                 if (!apiEndpoint) {
-                    alert('Please save your API endpoint first.');
+                    toast.warning('Configuration Required', 'Please save your API endpoint first.');
                     return;
                 }
 
@@ -689,10 +851,10 @@
                     if (!res.ok || data.success === false || data.error) {
                         throw new Error(data.error || data.message || 'Failed to trigger error');
                     }
-                    alert(data.message || 'Triggered test error');
+                    toast.success('Test Error Triggered', data.message || 'Error scenario has been triggered successfully.');
                     await fetchData();
                 } catch (err) {
-                    alert('Failed to trigger error: ' + err.message);
+                    toast.error('Trigger Failed', err.message);
                 } finally {
                     setTriggeringError(false);
                 }
@@ -742,7 +904,7 @@
 
                 const scenario = detectScenario(incident);
                 if (scenario && config.hasOwnProperty(scenario) && !config[scenario]) {
-                    alert('Auto-remediation is disabled for this scenario. Enable it in Configuration to proceed.');
+                    toast.warning('Auto-Remediation Disabled', 'This scenario requires approval. Enable it in Configuration or use manual approval.');
                     return;
                 }
 
@@ -789,9 +951,9 @@
                         };
                     });
 
-                    alert('Remediation triggered. Ticket set to IN_PROGRESS.');
+                    toast.success('Remediation Triggered', 'Ticket status has been set to IN_PROGRESS.');
                 } catch (err) {
-                    alert(`Failed to remediate: ${err.message}`);
+                    toast.error('Remediation Failed', err.message);
                 } finally {
                     setRemediatingId(null);
                 }
@@ -1304,6 +1466,7 @@
 
         // Auto-remediation eligible modal
         function RemediationEligibleModal({ incidents, onClose, onRemediate, remediatingId, setSelectedIncident, fetchLogs, apiEndpoint }) {
+            const toast = useToast();
             const [approvingId, setApprovingId] = useState(null);
             
             const openDetails = (incident) => {
@@ -1331,13 +1494,13 @@
 
                     const data = await res.json();
                     if (data.success) {
-                        alert('✅ Approved and remediated!\n\n' + (data.message || 'The incident has been resolved.'));
-                        window.location.reload();
+                        toast.success('Approved & Remediated', data.message || 'The incident has been resolved.');
+                        setTimeout(() => window.location.reload(), 1500);
                     } else {
-                        alert('❌ Failed: ' + (data.error || 'Unknown error'));
+                        toast.error('Approval Failed', data.error || 'Unknown error');
                     }
                 } catch (err) {
-                    alert('❌ Error: ' + err.message);
+                    toast.error('Error', err.message);
                 } finally {
                     setApprovingId(null);
                 }
@@ -1506,6 +1669,7 @@
 
         // Configuration modal for auto-remediation scenarios
         function ConfigModal({ config, setConfig, onClose, apiEndpoint }) {
+            const toast = useToast();
             const [saving, setSaving] = useState(false);
             const [loadingConfig, setLoadingConfig] = useState(true);
             const [localConfig, setLocalConfig] = useState(config);
@@ -1553,7 +1717,7 @@
 
             const saveConfig = async () => {
                 if (!apiEndpoint) {
-                    alert('Please configure API endpoint first');
+                    toast.warning('Configuration Required', 'Please configure API endpoint first');
                     return;
                 }
                 setSaving(true);
@@ -1566,13 +1730,13 @@
                     const data = await res.json();
                     if (data.success) {
                         setConfig(localConfig);
-                        alert('✅ Configuration saved successfully!');
+                        toast.success('Configuration Saved', 'Your auto-remediation settings have been updated.');
                         onClose();
                     } else {
-                        alert('Failed to save: ' + (data.error || 'Unknown error'));
+                        toast.error('Save Failed', data.error || 'Unknown error');
                     }
                 } catch (err) {
-                    alert('Failed to save configuration: ' + err.message);
+                    toast.error('Save Failed', err.message);
                 } finally {
                     setSaving(false);
                 }
@@ -1695,6 +1859,7 @@
 
         // Approve Button Component for incidents requiring approval
         function ApproveButton({ incident, apiEndpoint, onApproved }) {
+            const toast = useToast();
             const [approving, setApproving] = useState(false);
 
             const handleApprove = async () => {
@@ -1717,13 +1882,13 @@
 
                     const data = await res.json();
                     if (data.success) {
-                        alert('✅ Remediation approved and triggered!\n\nThe incident will be processed shortly.');
+                        toast.success('Remediation Approved', 'The incident will be processed shortly.');
                         if (onApproved) onApproved();
                     } else {
-                        alert('❌ Failed to approve: ' + (data.error || 'Unknown error'));
+                        toast.error('Approval Failed', data.error || 'Unknown error');
                     }
                 } catch (err) {
-                    alert('❌ Error: ' + err.message);
+                    toast.error('Error', err.message);
                 } finally {
                     setApproving(false);
                 }
@@ -1780,6 +1945,7 @@
 
         // Incident Detail Modal
         function IncidentModal({ incident, onClose, apiEndpoint, fetchLogs }) {
+            const toast = useToast();
             const [details, setDetails] = useState(null);
             const [loading, setLoading] = useState(true);
             const [resolving, setResolving] = useState(false);
@@ -1849,13 +2015,13 @@
                     });
                     const data = await res.json();
                     if (data.success) {
-                        alert('Incident marked as resolved!');
-                        window.location.reload(); // Refresh to show updated status
+                        toast.success('Incident Resolved', 'The incident has been marked as resolved.');
+                        setTimeout(() => window.location.reload(), 1500);
                     } else {
-                        alert('Failed to resolve incident: ' + (data.error || 'Unknown error'));
+                        toast.error('Resolution Failed', data.error || 'Unknown error');
                     }
                 } catch (err) {
-                    alert('Failed to resolve incident: ' + err.message);
+                    toast.error('Resolution Failed', err.message);
                 } finally {
                     setResolving(false);
                 }
@@ -2184,8 +2350,13 @@
             );
         }
 
-        // Render the app
-        ReactDOM.render(<Dashboard />, document.getElementById('root'));
+        // Render the app with ToastProvider
+        ReactDOM.render(
+            <ToastProvider>
+                <Dashboard />
+            </ToastProvider>,
+            document.getElementById('root')
+        );
     </script>
 </body>
 </html>
