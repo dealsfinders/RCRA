@@ -2281,8 +2281,27 @@
                                         <button 
                                             className="filter-btn"
                                             onClick={() => setShowRelated(!showRelated)}
+                                            style={{
+                                                background: details.relatedIncidents?.length > 0 ? 
+                                                    (showRelated ? '#e5e7eb' : 'linear-gradient(135deg, #667eea, #764ba2)') : undefined,
+                                                color: details.relatedIncidents?.length > 0 && !showRelated ? 'white' : undefined,
+                                                border: details.relatedIncidents?.length > 0 && !showRelated ? 'none' : undefined
+                                            }}
                                         >
-                                            {showRelated ? 'Hide related incidents' : 'Related incidents'}
+                                            🔁 {showRelated ? 'Hide Related' : 'Related Incidents'}
+                                            {details.relatedIncidents?.length > 0 && (
+                                                <span style={{
+                                                    marginLeft: '6px',
+                                                    background: showRelated ? '#667eea' : 'rgba(255,255,255,0.3)',
+                                                    color: showRelated ? 'white' : 'inherit',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '10px',
+                                                    fontSize: '11px',
+                                                    fontWeight: '700'
+                                                }}>
+                                                    {details.relatedIncidents.length}
+                                                </span>
+                                            )}
                                         </button>
                                     </div>
                                 )}
@@ -2359,25 +2378,49 @@
 
                                 {showRelated && (
                                     <div className="detail-section">
-                                        <h3>🔁 Related Incidents (same signature)</h3>
+                                        <h3>🔁 Related Incidents</h3>
+                                        <p style={{fontSize: '13px', color: '#6b7280', marginBottom: '12px'}}>
+                                            Incidents with the same error signature or from the same log group (last 7 days)
+                                        </p>
                                         {details.relatedIncidents && details.relatedIncidents.length > 0 ? (
-                                            <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                                            <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                                                 {details.relatedIncidents.map((rel) => (
-                                                    <div key={rel.incidentId} style={{padding: '10px', border: '1px solid #e5e7eb', borderRadius: '8px', background: '#f9fafb'}}>
-                                                        <div style={{fontSize: '12px', color: '#6b7280'}}>
-                                                            📅 {formatTimestamp(rel.timestamp)} • {rel.status || 'UNKNOWN'}
+                                                    <div key={rel.incidentId} style={{
+                                                        padding: '12px', 
+                                                        border: '1px solid #e5e7eb', 
+                                                        borderRadius: '10px', 
+                                                        background: '#f9fafb',
+                                                        borderLeft: `4px solid ${rel.status === 'RESOLVED' ? '#10b981' : rel.status === 'IN_PROGRESS' ? '#f59e0b' : '#ef4444'}`
+                                                    }}>
+                                                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                                            <div style={{fontWeight: '700', color: '#667eea'}}>
+                                                                🎫 {rel.ticketNumber || 'N/A'}
+                                                            </div>
+                                                            <span className={`status-badge status-${rel.status || 'OPEN'}`}>
+                                                                {rel.status || 'OPEN'}
+                                                            </span>
                                                         </div>
-                                                        <div style={{fontWeight: '700', color: '#667eea', marginTop: '2px'}}>
-                                                            {rel.ticketNumber || 'N/A'}
-                                                        </div>
-                                                        <div style={{fontSize: '13px', color: '#111827', marginTop: '4px'}}>
-                                                            {rel.incidentId}
+                                                        {rel.summary && (
+                                                            <div style={{fontSize: '13px', color: '#374151', marginTop: '6px'}}>
+                                                                {rel.summary}
+                                                            </div>
+                                                        )}
+                                                        <div style={{fontSize: '12px', color: '#6b7280', marginTop: '6px'}}>
+                                                            📅 {formatTimestamp(rel.timestamp)}
                                                         </div>
                                                     </div>
                                                 ))}
                                             </div>
                                         ) : (
-                                            <div style={{color: '#6b7280'}}>No related incidents found.</div>
+                                            <div style={{
+                                                padding: '20px', 
+                                                textAlign: 'center', 
+                                                background: '#f3f4f6', 
+                                                borderRadius: '8px',
+                                                color: '#6b7280'
+                                            }}>
+                                                No related incidents found in the last 7 days.
+                                            </div>
                                         )}
                                     </div>
                                 )}
