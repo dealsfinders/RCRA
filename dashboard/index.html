@@ -1070,11 +1070,14 @@
                                     </div>
                                     {incident.remediationAction && incident.remediationAction !== 'NONE' && (
                                         <div style={{marginTop: '5px'}}>
-                                            <span className={`remediation-badge remediation-${incident.remediationAction}`}>
-                                                {incident.remediationAction === 'AUTO_REMEDIATED' ? '✅ AUTO-FIXED' :
+                                            <span className={`remediation-badge ${incident.status === 'RESOLVED' ? 'remediation-AUTO_REMEDIATED' : `remediation-${incident.remediationAction}`}`}>
+                                                {incident.status === 'RESOLVED' ? '✅ FIXED' :
+                                                 incident.remediationAction === 'AUTO_REMEDIATED' ? '✅ AUTO-FIXED' :
                                                  incident.remediationAction === 'FAILED' ? '⚠️ FAILED' :
                                                  incident.remediationAction === 'MANUAL_APPROVAL_REQUIRED' ? '👤 APPROVAL' :
+                                                 incident.remediationAction === 'APPROVAL_REQUIRED' ? '⏳ NEEDS APPROVAL' :
                                                  incident.remediationAction === 'ANALYSIS_ONLY' ? '📊 ANALYSIS' :
+                                                 incident.remediationAction.includes('IN_PROGRESS') ? '⏳ IN PROGRESS' :
                                                  incident.remediationAction}
                                             </span>
                                         </div>
@@ -1169,12 +1172,14 @@
                                             )}
                                             {incident.remediationAction && incident.remediationAction !== 'NONE' && (
                                                 <div style={{marginTop: '8px'}}>
-                                                    <span className={`remediation-badge remediation-${incident.remediationAction}`}>
-                                                {incident.remediationAction === 'AUTO_REMEDIATED' ? '✅ AUTO-FIXED' :
+                                                    <span className={`remediation-badge ${incident.status === 'RESOLVED' ? 'remediation-AUTO_REMEDIATED' : `remediation-${incident.remediationAction}`}`}>
+                                                {incident.status === 'RESOLVED' ? '✅ FIXED' :
+                                                 incident.remediationAction === 'AUTO_REMEDIATED' ? '✅ AUTO-FIXED' :
                                                  incident.remediationAction === 'FAILED' ? '⚠️ FAILED' :
                                                  incident.remediationAction === 'MANUAL_APPROVAL_REQUIRED' ? '👤 APPROVAL NEEDED' :
                                                  incident.remediationAction === 'APPROVAL_REQUIRED' ? '⏳ NEEDS APPROVAL' :
                                                  incident.remediationAction === 'ANALYSIS_ONLY' ? '📊 ANALYSIS ONLY' :
+                                                 incident.remediationAction.includes('IN_PROGRESS') ? '⏳ IN PROGRESS' :
                                                  incident.remediationAction}
                                             </span>
                                         </div>
