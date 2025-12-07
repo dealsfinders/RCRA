@@ -883,6 +883,46 @@
         
         const useConfirm = () => React.useContext(ConfirmContext);
         
+        // Helper function to format timestamps nicely
+        const formatTimestamp = (timestamp, options = {}) => {
+            if (!timestamp) return 'N/A';
+            const date = new Date(timestamp);
+            if (isNaN(date.getTime())) return 'Invalid date';
+            
+            const { showDate = true, showTime = true, relative = false } = options;
+            
+            if (relative) {
+                const now = new Date();
+                const diff = now - date;
+                const minutes = Math.floor(diff / 60000);
+                const hours = Math.floor(diff / 3600000);
+                const days = Math.floor(diff / 86400000);
+                
+                if (minutes < 1) return 'Just now';
+                if (minutes < 60) return `${minutes}m ago`;
+                if (hours < 24) return `${hours}h ago`;
+                if (days < 7) return `${days}d ago`;
+            }
+            
+            const dateStr = date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+            
+            const timeStr = date.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            });
+            
+            if (showDate && showTime) return `${dateStr}, ${timeStr}`;
+            if (showDate) return dateStr;
+            if (showTime) return timeStr;
+            return date.toLocaleString();
+        };
+        
         const SCENARIO_OPTIONS = [
             { value: 'random', label: 'Random mix' },
             { value: 'timeout', label: 'Lambda timeout' },
@@ -1437,7 +1477,7 @@
                                     )}
                                     <div style={{fontWeight: '600'}}>{incident.summary}</div>
                                     <div style={{fontSize: '12px', color: '#999', marginTop: '5px'}}>
-                                        {new Date(incident.timestamp).toLocaleString()}
+                                        📅 {formatTimestamp(incident.timestamp)}
                                     </div>
                                     {incident.remediationAction && incident.remediationAction !== 'NONE' && (
                                         <div style={{marginTop: '5px'}}>
@@ -1555,7 +1595,7 @@
                                     </div>
                                             <div className="incident-summary">{incident.summary}</div>
                                             <div className="incident-timestamp">
-                                                {new Date(incident.timestamp).toLocaleString()} • {incident.logGroup}
+                                                📅 {formatTimestamp(incident.timestamp)} • {incident.logGroup}
                                             </div>
                                             <div style={{color: '#666', fontSize: '14px', marginTop: '8px'}}>
                                                 {incident.rootCause}
@@ -2248,7 +2288,7 @@
                                 )}
                                 {details && details.status === 'RESOLVED' && (
                                     <div style={{marginTop: '10px', color: '#065f46', fontSize: '14px'}}>
-                                        ✅ Resolved by {details.resolvedBy || 'Unknown'} at {details.resolvedAt ? new Date(details.resolvedAt).toLocaleString() : 'Unknown time'}
+                                        ✅ Resolved by {details.resolvedBy || 'System'} on 📅 {formatTimestamp(details.resolvedAt)}
                                     </div>
                                 )}
                                 {details && details.remediation?.actionTaken === 'APPROVAL_REQUIRED' && details.status !== 'RESOLVED' && (
@@ -2273,7 +2313,7 @@
                                             {details.analysis?.severity}
                                         </span>
                                         <span style={{color: '#999'}}>
-                                            {new Date(details.timestamp).toLocaleString()}
+                                            📅 {formatTimestamp(details.timestamp)}
                                         </span>
                                     </div>
                                     <p>{details.analysis?.summary}</p>
@@ -2325,7 +2365,7 @@
                                                 {details.relatedIncidents.map((rel) => (
                                                     <div key={rel.incidentId} style={{padding: '10px', border: '1px solid #e5e7eb', borderRadius: '8px', background: '#f9fafb'}}>
                                                         <div style={{fontSize: '12px', color: '#6b7280'}}>
-                                                            {rel.timestamp ? new Date(rel.timestamp).toLocaleString() : ''} • {rel.status || 'UNKNOWN'}
+                                                            📅 {formatTimestamp(rel.timestamp)} • {rel.status || 'UNKNOWN'}
                                                         </div>
                                                         <div style={{fontWeight: '700', color: '#667eea', marginTop: '2px'}}>
                                                             {rel.ticketNumber || 'N/A'}
@@ -2364,7 +2404,7 @@
                                                         </span>
                                                     </div>
                                                     <div style={{fontSize: '12px', color: '#999', marginTop: '2px'}}>
-                                                        {new Date(occ.timestamp).toLocaleString()}
+                                                        📅 {formatTimestamp(occ.timestamp)}
                                                     </div>
                                                 </div>
                                             ))}
@@ -2426,7 +2466,7 @@
                                                                     display: 'flex',
                                                                     gap: '15px'
                                                                 }}>
-                                                                    <span>📅 {log.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A'}</span>
+                                                                    <span>📅 {formatTimestamp(log.timestamp)}</span>
                                                                     {log.logStreamName && <span>📁 {log.logStreamName.split('/').pop()}</span>}
                                                                 </div>
                                                                 <pre style={{
@@ -2499,7 +2539,7 @@
                                 {events.map((evt, idx) => (
                                     <div key={idx} style={{marginBottom: '10px', padding: '10px', background: 'white', borderRadius: '6px', border: '1px solid #e5e7eb'}}>
                                         <div style={{fontSize: '12px', color: '#6b7280'}}>
-                                            {evt.ingestionTime ? new Date(evt.ingestionTime).toLocaleString() : ''}
+                                            📅 {formatTimestamp(evt.ingestionTime)}
                                             {evt.logStreamName && ` • ${evt.logStreamName}`}
                                         </div>
                                         <pre style={{whiteSpace: 'pre-wrap', marginTop: '4px', fontSize: '13px', color: '#111827'}}>{evt.message}</pre>
