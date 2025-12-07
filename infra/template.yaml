@@ -169,6 +169,12 @@ Resources:
             Action:
               - logs:FilterLogEvents
             Resource: "*"
+        - Statement:
+            Effect: Allow
+            Action:
+              - lambda:GetFunctionConfiguration
+              - lambda:UpdateFunctionConfiguration
+            Resource: "*"
       Events:
         GetIncidents:
           Type: HttpApi
