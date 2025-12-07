@@ -752,6 +752,137 @@
         
         const useToast = () => React.useContext(ToastContext);
         
+        // Confirm Context for custom confirmation dialogs
+        const ConfirmContext = React.createContext();
+        
+        function ConfirmProvider({ children }) {
+            const [confirmState, setConfirmState] = useState({
+                isOpen: false,
+                title: '',
+                message: '',
+                confirmText: 'Confirm',
+                cancelText: 'Cancel',
+                type: 'warning',
+                onConfirm: null,
+            });
+            
+            const showConfirm = useCallback((options) => {
+                return new Promise((resolve) => {
+                    setConfirmState({
+                        isOpen: true,
+                        title: options.title || 'Confirm Action',
+                        message: options.message || 'Are you sure?',
+                        confirmText: options.confirmText || 'Confirm',
+                        cancelText: options.cancelText || 'Cancel',
+                        type: options.type || 'warning',
+                        onConfirm: () => {
+                            setConfirmState(prev => ({ ...prev, isOpen: false }));
+                            resolve(true);
+                        },
+                        onCancel: () => {
+                            setConfirmState(prev => ({ ...prev, isOpen: false }));
+                            resolve(false);
+                        },
+                    });
+                });
+            }, []);
+            
+            return (
+                <ConfirmContext.Provider value={showConfirm}>
+                    {children}
+                    {confirmState.isOpen && (
+                        <div className="modal-overlay" style={{zIndex: 10001}}>
+                            <div className="modal" style={{maxWidth: '450px', animation: 'slideIn 0.2s ease-out'}}>
+                                <div style={{
+                                    padding: '25px',
+                                    background: confirmState.type === 'danger' ? 'linear-gradient(135deg, #fef2f2, #fee2e2)' :
+                                               confirmState.type === 'warning' ? 'linear-gradient(135deg, #fffbeb, #fef3c7)' :
+                                               'linear-gradient(135deg, #f0f9ff, #e0f2fe)',
+                                    borderRadius: '16px 16px 0 0',
+                                    textAlign: 'center'
+                                }}>
+                                    <div style={{
+                                        fontSize: '48px',
+                                        marginBottom: '15px'
+                                    }}>
+                                        {confirmState.type === 'danger' ? '⚠️' :
+                                         confirmState.type === 'warning' ? '🤔' : '❓'}
+                                    </div>
+                                    <h2 style={{
+                                        margin: 0,
+                                        fontSize: '20px',
+                                        color: confirmState.type === 'danger' ? '#991b1b' :
+                                               confirmState.type === 'warning' ? '#92400e' : '#1e40af'
+                                    }}>
+                                        {confirmState.title}
+                                    </h2>
+                                </div>
+                                <div style={{padding: '20px 25px'}}>
+                                    <p style={{
+                                        margin: 0,
+                                        color: '#4b5563',
+                                        fontSize: '15px',
+                                        lineHeight: '1.6',
+                                        textAlign: 'center'
+                                    }}>
+                                        {confirmState.message}
+                                    </p>
+                                </div>
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '12px',
+                                    padding: '15px 25px 25px',
+                                    justifyContent: 'center'
+                                }}>
+                                    <button
+                                        onClick={confirmState.onCancel}
+                                        style={{
+                                            padding: '12px 28px',
+                                            borderRadius: '10px',
+                                            border: '2px solid #e5e7eb',
+                                            background: 'white',
+                                            color: '#6b7280',
+                                            fontWeight: '600',
+                                            fontSize: '14px',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s'
+                                        }}
+                                        onMouseEnter={(e) => e.target.style.background = '#f3f4f6'}
+                                        onMouseLeave={(e) => e.target.style.background = 'white'}
+                                    >
+                                        {confirmState.cancelText}
+                                    </button>
+                                    <button
+                                        onClick={confirmState.onConfirm}
+                                        style={{
+                                            padding: '12px 28px',
+                                            borderRadius: '10px',
+                                            border: 'none',
+                                            background: confirmState.type === 'danger' ? 'linear-gradient(135deg, #ef4444, #dc2626)' :
+                                                       confirmState.type === 'warning' ? 'linear-gradient(135deg, #f59e0b, #d97706)' :
+                                                       'linear-gradient(135deg, #667eea, #764ba2)',
+                                            color: 'white',
+                                            fontWeight: '600',
+                                            fontSize: '14px',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                            boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
+                                        }}
+                                        onMouseEnter={(e) => e.target.style.transform = 'translateY(-2px)'}
+                                        onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
+                                    >
+                                        {confirmState.confirmText}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </ConfirmContext.Provider>
+            );
+        }
+        
+        const useConfirm = () => React.useContext(ConfirmContext);
+        
         const SCENARIO_OPTIONS = [
             { value: 'random', label: 'Random mix' },
             { value: 'timeout', label: 'Lambda timeout' },
@@ -769,6 +900,7 @@
         // Main Dashboard Component
         function Dashboard() {
             const toast = useToast();
+            const confirm = useConfirm();
             const [apiEndpoint, setApiEndpoint] = useState(localStorage.getItem('rcraApiEndpoint') || '');
             const [tempEndpoint, setTempEndpoint] = useState(apiEndpoint);
             const [statistics, setStatistics] = useState(null);
@@ -900,7 +1032,15 @@
             const remediateIncident = async (incident) => {
                 if (!apiEndpoint) return;
                 if (['RESOLVED', 'IN_PROGRESS'].includes(incident.status)) return;
-                if (!confirm(`Trigger remediation for ${incident.incidentId}?`)) return;
+                
+                const confirmed = await confirm({
+                    title: 'Trigger Remediation?',
+                    message: `This will start the remediation process for incident ${incident.ticketNumber || incident.incidentId}. The system will attempt to automatically fix the issue.`,
+                    confirmText: '🚀 Start Remediation',
+                    cancelText: 'Cancel',
+                    type: 'warning'
+                });
+                if (!confirmed) return;
 
                 const scenario = detectScenario(incident);
                 if (scenario && config.hasOwnProperty(scenario) && !config[scenario]) {
@@ -1467,6 +1607,7 @@
         // Auto-remediation eligible modal
         function RemediationEligibleModal({ incidents, onClose, onRemediate, remediatingId, setSelectedIncident, fetchLogs, apiEndpoint }) {
             const toast = useToast();
+            const confirm = useConfirm();
             const [approvingId, setApprovingId] = useState(null);
             
             const openDetails = (incident) => {
@@ -1475,9 +1616,14 @@
             };
 
             const handleApproveAndRemediate = async (incident) => {
-                if (!confirm('⚠️ Approve and execute remediation for this incident?\n\nThis will apply the fix immediately.')) {
-                    return;
-                }
+                const confirmed = await confirm({
+                    title: 'Approve & Execute Remediation?',
+                    message: 'This will immediately apply the fix for this incident. The remediation action will be executed right away.',
+                    confirmText: '✅ Approve & Fix Now',
+                    cancelText: 'Cancel',
+                    type: 'warning'
+                });
+                if (!confirmed) return;
 
                 setApprovingId(incident.incidentId);
                 try {
@@ -1860,10 +2006,18 @@
         // Approve Button Component for incidents requiring approval
         function ApproveButton({ incident, apiEndpoint, onApproved }) {
             const toast = useToast();
+            const confirm = useConfirm();
             const [approving, setApproving] = useState(false);
 
             const handleApprove = async () => {
-                if (!confirm('⚠️ Are you sure you want to approve auto-remediation for this incident?\n\nThis will execute the remediation action immediately.')) {
+                const confirmed = await confirm({
+                    title: 'Approve Auto-Remediation?',
+                    message: 'This will execute the remediation action immediately. The system will attempt to automatically fix this incident.',
+                    confirmText: '✅ Approve & Remediate',
+                    cancelText: 'Cancel',
+                    type: 'warning'
+                });
+                if (!confirmed) {
                     return;
                 }
 
@@ -1946,6 +2100,7 @@
         // Incident Detail Modal
         function IncidentModal({ incident, onClose, apiEndpoint, fetchLogs }) {
             const toast = useToast();
+            const confirm = useConfirm();
             const [details, setDetails] = useState(null);
             const [loading, setLoading] = useState(true);
             const [resolving, setResolving] = useState(false);
@@ -2001,7 +2156,14 @@
             }, [incident.incidentId]);
             
             const handleResolve = async () => {
-                if (!confirm('Mark this incident as resolved?')) return;
+                const confirmed = await confirm({
+                    title: 'Mark as Resolved?',
+                    message: 'This will mark the incident as resolved and close the ticket. Make sure the issue has been properly addressed.',
+                    confirmText: '✅ Mark Resolved',
+                    cancelText: 'Cancel',
+                    type: 'info'
+                });
+                if (!confirmed) return;
                 
                 setResolving(true);
                 try {
@@ -2350,10 +2512,12 @@
             );
         }
 
-        // Render the app with ToastProvider
+        // Render the app with ToastProvider and ConfirmProvider
         ReactDOM.render(
             <ToastProvider>
-                <Dashboard />
+                <ConfirmProvider>
+                    <Dashboard />
+                </ConfirmProvider>
             </ToastProvider>,
             document.getElementById('root')
         );
