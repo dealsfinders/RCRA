@@ -295,7 +295,6 @@ def get_incident_logs(incident_id, query_params):
         params = {
             "logGroupName": log_group,
             "limit": limit,
-            "startFromHead": False,
         }
         if log_stream:
             params["logStreamNames"] = [log_stream]
