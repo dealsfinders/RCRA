@@ -1031,6 +1031,34 @@
             const [logEvents, setLogEvents] = useState([]);
             const [logLoading, setLogLoading] = useState(false);
             const [logError, setLogError] = useState(null);
+            const [showPredictive, setShowPredictive] = useState(false);
+            const [predictiveData, setPredictiveData] = useState(null);
+            const [predictiveLoading, setPredictiveLoading] = useState(false);
+
+            const fetchPredictiveAnalysis = async () => {
+                if (!apiEndpoint) {
+                    toast.warning('Configuration Required', 'Please save your API endpoint first.');
+                    return;
+                }
+                
+                setPredictiveLoading(true);
+                setShowPredictive(true);
+                
+                try {
+                    const res = await fetch(`${apiEndpoint}/predictive-analysis`);
+                    const data = await res.json();
+                    
+                    if (data.success) {
+                        setPredictiveData(data.analysis);
+                    } else {
+                        toast.error('Analysis Failed', data.error || 'Failed to generate predictive analysis');
+                    }
+                } catch (err) {
+                    toast.error('Error', err.message);
+                } finally {
+                    setPredictiveLoading(false);
+                }
+            };
 
             const detectScenario = (incident) => {
                 const text = `${incident.rootCause || ''} ${incident.summary || ''}`.toLowerCase();
@@ -1266,6 +1294,23 @@
                             />
                             <button onClick={saveApiEndpoint}>Save</button>
                             <button className="secondary-button" onClick={() => setShowConfig(true)}>Configuration</button>
+                            <button 
+                                onClick={fetchPredictiveAnalysis}
+                                style={{
+                                    background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
+                                    color: 'white',
+                                    border: 'none',
+                                    padding: '10px 20px',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    fontWeight: '600',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                }}
+                            >
+                                🔮 Predictive Analysis
+                            </button>
                         </div>
                     </div>
 
@@ -1406,6 +1451,17 @@
                             setConfig={setConfig}
                             onClose={() => setShowConfig(false)}
                             apiEndpoint={apiEndpoint}
+                        />
+                    )}
+
+                    {showPredictive && (
+                        <PredictiveAnalysisModal
+                            data={predictiveData}
+                            loading={predictiveLoading}
+                            onClose={() => {
+                                setShowPredictive(false);
+                                setPredictiveData(null);
+                            }}
                         />
                     )}
 
@@ -1904,6 +1960,341 @@
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // Predictive Analysis Modal
+        function PredictiveAnalysisModal({ data, loading, onClose }) {
+            const getTrendIcon = (trend) => {
+                if (trend === 'increasing') return '📈';
+                if (trend === 'decreasing') return '📉';
+                return '➡️';
+            };
+            
+            const getTrendColor = (trend) => {
+                if (trend === 'increasing') return '#ef4444';
+                if (trend === 'decreasing') return '#10b981';
+                return '#6b7280';
+            };
+            
+            const getHealthColor = (status) => {
+                if (status === 'Critical') return '#ef4444';
+                if (status === 'Warning') return '#f59e0b';
+                return '#10b981';
+            };
+            
+            const getRiskColor = (score) => {
+                if (score >= 70) return '#ef4444';
+                if (score >= 40) return '#f59e0b';
+                return '#10b981';
+            };
+
+            return (
+                <div className="modal-overlay">
+                    <div className="modal" style={{maxWidth: '900px', maxHeight: '90vh', overflow: 'auto'}}>
+                        <div className="modal-header">
+                            <div>
+                                <h2 style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                                    🔮 Predictive Analysis
+                                    <span style={{
+                                        fontSize: '12px',
+                                        background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
+                                        color: 'white',
+                                        padding: '4px 10px',
+                                        borderRadius: '12px'
+                                    }}>
+                                        AI-Powered
+                                    </span>
+                                </h2>
+                                <div className="incident-id">Analyzing incident patterns to predict future issues</div>
+                            </div>
+                            <button className="modal-close" onClick={onClose}>×</button>
+                        </div>
+
+                        {loading ? (
+                            <div style={{padding: '60px', textAlign: 'center'}}>
+                                <div style={{fontSize: '48px', marginBottom: '20px'}}>🔮</div>
+                                <div style={{fontSize: '18px', fontWeight: '600', marginBottom: '10px'}}>
+                                    Analyzing Incident Patterns...
+                                </div>
+                                <div style={{color: '#6b7280'}}>
+                                    Using AI and linear regression to predict future incidents
+                                </div>
+                                <div style={{marginTop: '20px'}}>
+                                    <div className="loading">Processing data...</div>
+                                </div>
+                            </div>
+                        ) : data ? (
+                            <div style={{padding: '20px'}}>
+                                {/* Risk Score & Health Status */}
+                                <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                                    gap: '15px',
+                                    marginBottom: '20px'
+                                }}>
+                                    <div style={{
+                                        background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)',
+                                        padding: '20px',
+                                        borderRadius: '12px',
+                                        textAlign: 'center',
+                                        border: '1px solid #e2e8f0'
+                                    }}>
+                                        <div style={{fontSize: '14px', color: '#6b7280', marginBottom: '8px'}}>Risk Score</div>
+                                        <div style={{
+                                            fontSize: '42px',
+                                            fontWeight: '700',
+                                            color: getRiskColor(data.riskScore || 0)
+                                        }}>
+                                            {data.riskScore || 0}
+                                        </div>
+                                        <div style={{fontSize: '12px', color: '#9ca3af'}}>out of 100</div>
+                                    </div>
+                                    
+                                    <div style={{
+                                        background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)',
+                                        padding: '20px',
+                                        borderRadius: '12px',
+                                        textAlign: 'center',
+                                        border: '1px solid #e2e8f0'
+                                    }}>
+                                        <div style={{fontSize: '14px', color: '#6b7280', marginBottom: '8px'}}>Health Status</div>
+                                        <div style={{
+                                            fontSize: '24px',
+                                            fontWeight: '700',
+                                            color: getHealthColor(data.healthStatus)
+                                        }}>
+                                            {data.healthStatus === 'Healthy' && '✅'}
+                                            {data.healthStatus === 'Warning' && '⚠️'}
+                                            {data.healthStatus === 'Critical' && '🚨'}
+                                            {' '}{data.healthStatus || 'Unknown'}
+                                        </div>
+                                    </div>
+                                    
+                                    <div style={{
+                                        background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)',
+                                        padding: '20px',
+                                        borderRadius: '12px',
+                                        textAlign: 'center',
+                                        border: '1px solid #e2e8f0'
+                                    }}>
+                                        <div style={{fontSize: '14px', color: '#6b7280', marginBottom: '8px'}}>Incidents Analyzed</div>
+                                        <div style={{fontSize: '42px', fontWeight: '700', color: '#667eea'}}>
+                                            {data.incidentCount || 0}
+                                        </div>
+                                        <div style={{fontSize: '12px', color: '#9ca3af'}}>{data.timeRange}</div>
+                                    </div>
+                                </div>
+
+                                {/* Linear Regression Prediction */}
+                                {data.linearRegression && (
+                                    <div className="detail-section" style={{
+                                        background: 'linear-gradient(135deg, #eff6ff, #dbeafe)',
+                                        border: '1px solid #bfdbfe',
+                                        marginBottom: '20px'
+                                    }}>
+                                        <h3 style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                                            📊 Linear Regression Forecast
+                                            <span style={{
+                                                fontSize: '11px',
+                                                background: '#3b82f6',
+                                                color: 'white',
+                                                padding: '2px 8px',
+                                                borderRadius: '8px'
+                                            }}>
+                                                {data.linearRegression.confidence}% confidence
+                                            </span>
+                                        </h3>
+                                        
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                                            gap: '15px',
+                                            marginTop: '15px'
+                                        }}>
+                                            <div style={{
+                                                background: 'white',
+                                                padding: '15px',
+                                                borderRadius: '10px',
+                                                textAlign: 'center'
+                                            }}>
+                                                <div style={{fontSize: '12px', color: '#6b7280'}}>Trend</div>
+                                                <div style={{
+                                                    fontSize: '20px',
+                                                    fontWeight: '700',
+                                                    color: getTrendColor(data.linearRegression.trend),
+                                                    textTransform: 'capitalize'
+                                                }}>
+                                                    {getTrendIcon(data.linearRegression.trend)} {data.linearRegression.trend}
+                                                </div>
+                                            </div>
+                                            
+                                            <div style={{
+                                                background: 'white',
+                                                padding: '15px',
+                                                borderRadius: '10px',
+                                                textAlign: 'center'
+                                            }}>
+                                                <div style={{fontSize: '12px', color: '#6b7280'}}>Next Week Prediction</div>
+                                                <div style={{fontSize: '28px', fontWeight: '700', color: '#1e40af'}}>
+                                                    {data.linearRegression.nextWeekPrediction?.total || 0}
+                                                </div>
+                                                <div style={{fontSize: '11px', color: '#6b7280'}}>incidents expected</div>
+                                            </div>
+                                            
+                                            <div style={{
+                                                background: 'white',
+                                                padding: '15px',
+                                                borderRadius: '10px',
+                                                textAlign: 'center'
+                                            }}>
+                                                <div style={{fontSize: '12px', color: '#6b7280'}}>vs Current Week</div>
+                                                <div style={{
+                                                    fontSize: '20px',
+                                                    fontWeight: '700',
+                                                    color: (data.linearRegression.nextWeekPrediction?.percentageChange || 0) > 0 ? '#ef4444' : '#10b981'
+                                                }}>
+                                                    {(data.linearRegression.nextWeekPrediction?.percentageChange || 0) > 0 ? '↑' : '↓'}
+                                                    {Math.abs(data.linearRegression.nextWeekPrediction?.percentageChange || 0)}%
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Daily Predictions Chart */}
+                                        {data.linearRegression.nextWeekPrediction?.dailyBreakdown && (
+                                            <div style={{marginTop: '20px'}}>
+                                                <div style={{fontSize: '13px', fontWeight: '600', marginBottom: '10px'}}>
+                                                    📅 Daily Prediction (Next 7 Days)
+                                                </div>
+                                                <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+                                                    {data.linearRegression.nextWeekPrediction.dailyBreakdown.map((day, idx) => (
+                                                        <div key={idx} style={{
+                                                            background: 'white',
+                                                            padding: '10px 15px',
+                                                            borderRadius: '8px',
+                                                            textAlign: 'center',
+                                                            minWidth: '80px'
+                                                        }}>
+                                                            <div style={{fontSize: '11px', color: '#6b7280'}}>
+                                                                {new Date(day.date).toLocaleDateString('en-US', {weekday: 'short'})}
+                                                            </div>
+                                                            <div style={{fontSize: '18px', fontWeight: '700', color: '#1e40af'}}>
+                                                                {day.predictedCount}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* AI Summary */}
+                                {data.summary && (
+                                    <div className="detail-section">
+                                        <h3>📝 Executive Summary</h3>
+                                        <p style={{lineHeight: '1.7', color: '#374151'}}>{data.summary}</p>
+                                    </div>
+                                )}
+
+                                {/* Patterns */}
+                                {data.patterns && data.patterns.length > 0 && (
+                                    <div className="detail-section">
+                                        <h3>🔍 Identified Patterns</h3>
+                                        <ul style={{paddingLeft: '20px', lineHeight: '1.8'}}>
+                                            {data.patterns.map((pattern, idx) => (
+                                                <li key={idx} style={{color: '#374151'}}>{pattern}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+
+                                {/* Predictions */}
+                                {data.predictions && data.predictions.length > 0 && (
+                                    <div className="detail-section">
+                                        <h3>🎯 Incident Predictions</h3>
+                                        <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                                            {data.predictions.map((pred, idx) => (
+                                                <div key={idx} style={{
+                                                    background: '#fef3c7',
+                                                    padding: '12px 15px',
+                                                    borderRadius: '8px',
+                                                    borderLeft: '4px solid #f59e0b'
+                                                }}>
+                                                    <div style={{fontWeight: '600', color: '#92400e'}}>
+                                                        {pred.type || pred}
+                                                    </div>
+                                                    {pred.probability && (
+                                                        <div style={{fontSize: '12px', color: '#78350f', marginTop: '4px'}}>
+                                                            Probability: {pred.probability} | Timeframe: {pred.timeframe}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Recommendations */}
+                                {data.recommendations && data.recommendations.length > 0 && (
+                                    <div className="detail-section">
+                                        <h3>💡 Prevention Recommendations</h3>
+                                        <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                                            {data.recommendations.map((rec, idx) => (
+                                                <div key={idx} style={{
+                                                    background: '#d1fae5',
+                                                    padding: '12px 15px',
+                                                    borderRadius: '8px',
+                                                    borderLeft: '4px solid #10b981'
+                                                }}>
+                                                    <div style={{fontWeight: '600', color: '#065f46'}}>
+                                                        {rec.action || rec}
+                                                    </div>
+                                                    {rec.reason && (
+                                                        <div style={{fontSize: '12px', color: '#047857', marginTop: '4px'}}>
+                                                            Reason: {rec.reason}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Statistics */}
+                                <div className="detail-section">
+                                    <h3>📊 Statistics Summary</h3>
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                                        gap: '10px'
+                                    }}>
+                                        {data.avgResolutionTime && (
+                                            <div style={{background: '#f3f4f6', padding: '12px', borderRadius: '8px', textAlign: 'center'}}>
+                                                <div style={{fontSize: '12px', color: '#6b7280'}}>Avg Resolution Time</div>
+                                                <div style={{fontSize: '18px', fontWeight: '700'}}>{data.avgResolutionTime} min</div>
+                                            </div>
+                                        )}
+                                        {data.severityBreakdown && Object.entries(data.severityBreakdown).map(([sev, count]) => (
+                                            <div key={sev} style={{background: '#f3f4f6', padding: '12px', borderRadius: '8px', textAlign: 'center'}}>
+                                                <div style={{fontSize: '12px', color: '#6b7280'}}>{sev}</div>
+                                                <div style={{fontSize: '18px', fontWeight: '700'}}>{count}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div style={{fontSize: '12px', color: '#9ca3af', textAlign: 'center', marginTop: '20px'}}>
+                                    Analysis generated on {formatTimestamp(data.analysisDate)}
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{padding: '40px', textAlign: 'center', color: '#6b7280'}}>
+                                No analysis data available
                             </div>
                         )}
                     </div>

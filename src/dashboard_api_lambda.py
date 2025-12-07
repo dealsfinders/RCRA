@@ -140,7 +140,17 @@ def handler(event, context):
                 body = json.loads(event.get("body", "{}"))
                 incident_id = body.get("incidentId")
                 resolved_by = body.get("resolvedBy", "MANUAL_RESOLUTION")
-                response_data = resolve_incident(incident_id, resolved_by)
+                resolution_notes = body.get("resolutionNotes")
+                response_data = resolve_incident(incident_id, resolved_by, resolution_notes)
+            else:
+                return {
+                    "statusCode": 405,
+                    "headers": cors_headers(),
+                    "body": json.dumps({"error": "Method not allowed"}),
+                }
+        elif path == "/predictive-analysis" or path.endswith("/predictive-analysis"):
+            if http_method == "GET":
+                response_data = get_predictive_analysis()
             else:
                 return {
                     "statusCode": 405,
@@ -1034,4 +1044,319 @@ def resolve_incident(incident_id, resolved_by, resolution_notes=None):
         return {
             "success": False,
             "error": str(e)
+        }
+
+
+def linear_regression_predict(daily_counts):
+    """
+    Simple linear regression to predict future incident counts.
+    Uses least squares method without external libraries.
+    
+    Args:
+        daily_counts: list of (day_number, count) tuples
+    
+    Returns:
+        dict with slope, intercept, predictions for next 7 days, and confidence
+    """
+    if len(daily_counts) < 3:
+        return {
+            "slope": 0,
+            "intercept": sum(c for _, c in daily_counts) / len(daily_counts) if daily_counts else 0,
+            "predictions": [],
+            "trend": "insufficient_data",
+            "confidence": 0
+        }
+    
+    n = len(daily_counts)
+    x_values = [x for x, _ in daily_counts]
+    y_values = [y for _, y in daily_counts]
+    
+    # Calculate means
+    x_mean = sum(x_values) / n
+    y_mean = sum(y_values) / n
+    
+    # Calculate slope (m) and intercept (b) using least squares
+    numerator = sum((x - x_mean) * (y - y_mean) for x, y in daily_counts)
+    denominator = sum((x - x_mean) ** 2 for x in x_values)
+    
+    if denominator == 0:
+        slope = 0
+    else:
+        slope = numerator / denominator
+    
+    intercept = y_mean - slope * x_mean
+    
+    # Calculate R-squared for confidence
+    y_pred = [slope * x + intercept for x in x_values]
+    ss_res = sum((y - yp) ** 2 for y, yp in zip(y_values, y_pred))
+    ss_tot = sum((y - y_mean) ** 2 for y in y_values)
+    r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
+    
+    # Predict next 7 days
+    last_day = max(x_values)
+    predictions = []
+    for i in range(1, 8):
+        predicted_day = last_day + i
+        predicted_count = max(0, round(slope * predicted_day + intercept, 1))
+        predictions.append({
+            "day": i,
+            "predictedCount": predicted_count,
+            "date": (datetime.utcnow() + timedelta(days=i)).strftime("%Y-%m-%d")
+        })
+    
+    # Determine trend
+    if slope > 0.5:
+        trend = "increasing"
+    elif slope < -0.5:
+        trend = "decreasing"
+    else:
+        trend = "stable"
+    
+    # Calculate weekly prediction
+    next_week_total = sum(p["predictedCount"] for p in predictions)
+    current_week_avg = sum(y_values[-7:]) if len(y_values) >= 7 else sum(y_values)
+    
+    return {
+        "slope": round(slope, 3),
+        "intercept": round(intercept, 3),
+        "trend": trend,
+        "confidence": round(max(0, min(1, r_squared)) * 100, 1),
+        "predictions": predictions,
+        "nextWeekTotal": round(next_week_total, 1),
+        "currentWeekTotal": current_week_avg,
+        "percentageChange": round(((next_week_total - current_week_avg) / current_week_avg * 100) if current_week_avg > 0 else 0, 1)
+    }
+
+
+def get_predictive_analysis():
+    """Use AI to analyze incident patterns and provide predictive insights"""
+    try:
+        # Fetch all incidents from last 30 days
+        now = datetime.utcnow()
+        last_30_days = now - timedelta(days=30)
+        last_30_days_str = last_30_days.isoformat() + "Z"
+        
+        response = table.scan(
+            FilterExpression=Attr('CreatedAt').gt(last_30_days_str) & 
+                           Attr('IncidentId').begins_with('inc-')
+        )
+        
+        items = response.get('Items', [])
+        
+        if not items:
+            return {
+                "success": True,
+                "analysis": {
+                    "summary": "No incidents found in the last 30 days to analyze.",
+                    "patterns": [],
+                    "predictions": [],
+                    "recommendations": [],
+                    "riskScore": 0
+                },
+                "incidentCount": 0
+            }
+        
+        # Prepare incident data for analysis
+        incident_summaries = []
+        error_types = {}
+        severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+        time_distribution = {}
+        log_groups = {}
+        resolution_times = []
+        daily_incidents = {}  # For linear regression
+        
+        for item in items:
+            analysis = item.get("AnalysisResult", {})
+            summary = analysis.get("summary", "Unknown error")
+            severity = analysis.get("severity", "UNKNOWN")
+            root_cause = analysis.get("probable_root_cause", "Unknown")
+            tags = analysis.get("tags", [])
+            status = item.get("Status", "OPEN")
+            created_at = item.get("CreatedAt", "")
+            resolved_at = item.get("ResolvedAt")
+            log_group = item.get("LogGroup", "Unknown")
+            
+            incident_summaries.append({
+                "summary": summary,
+                "severity": severity,
+                "rootCause": root_cause,
+                "tags": tags,
+                "status": status,
+                "logGroup": log_group
+            })
+            
+            # Count error types
+            error_key = summary[:50] if summary else "Unknown"
+            error_types[error_key] = error_types.get(error_key, 0) + 1
+            
+            # Count severities
+            if severity in severity_counts:
+                severity_counts[severity] += 1
+            
+            # Track log groups
+            log_groups[log_group] = log_groups.get(log_group, 0) + 1
+            
+            # Calculate resolution times
+            if resolved_at and created_at:
+                try:
+                    created = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    resolved = datetime.fromisoformat(resolved_at.replace('Z', '+00:00'))
+                    resolution_time = (resolved - created).total_seconds() / 60  # minutes
+                    resolution_times.append(resolution_time)
+                except:
+                    pass
+            
+            # Time distribution (hour of day) and daily counts
+            if created_at:
+                try:
+                    dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    hour = dt.hour
+                    time_distribution[hour] = time_distribution.get(hour, 0) + 1
+                    
+                    # Track daily incidents for linear regression
+                    day_key = dt.strftime("%Y-%m-%d")
+                    daily_incidents[day_key] = daily_incidents.get(day_key, 0) + 1
+                except:
+                    pass
+        
+        # Perform linear regression on daily incident counts
+        # Convert to list of (day_number, count) for regression
+        sorted_days = sorted(daily_incidents.keys())
+        daily_counts = [(i, daily_incidents[day]) for i, day in enumerate(sorted_days)]
+        
+        # Run linear regression prediction
+        regression_result = linear_regression_predict(daily_counts)
+        
+        # Build context for AI analysis
+        context = f"""
+Analyze the following incident data from the last 30 days and provide predictive insights:
+
+INCIDENT STATISTICS:
+- Total Incidents: {len(items)}
+- Severity Distribution: {json.dumps(severity_counts)}
+- Top Error Types: {json.dumps(dict(sorted(error_types.items(), key=lambda x: x[1], reverse=True)[:5]))}
+- Affected Services: {json.dumps(dict(sorted(log_groups.items(), key=lambda x: x[1], reverse=True)[:5]))}
+- Average Resolution Time: {sum(resolution_times)/len(resolution_times) if resolution_times else 'N/A'} minutes
+- Peak Hours: {json.dumps(dict(sorted(time_distribution.items(), key=lambda x: x[1], reverse=True)[:3]))}
+
+LINEAR REGRESSION FORECAST:
+- Trend: {regression_result['trend']} (slope: {regression_result['slope']})
+- Predicted Next Week Total: {regression_result['nextWeekTotal']} incidents
+- Current Week Total: {regression_result['currentWeekTotal']} incidents  
+- Expected Change: {regression_result['percentageChange']}%
+- Model Confidence: {regression_result['confidence']}%
+- Daily Predictions: {json.dumps(regression_result['predictions'])}
+
+RECENT INCIDENT SAMPLES (last 10):
+{json.dumps(incident_summaries[:10], indent=2)}
+
+Based on this data, provide:
+1. PATTERN ANALYSIS: What recurring patterns do you see?
+2. RISK ASSESSMENT: What is the overall system health risk score (0-100)?
+3. PREDICTIONS: What types of incidents are likely to occur in the next 7 days based on the linear regression forecast?
+4. PREVENTION RECOMMENDATIONS: What proactive steps should be taken to prevent future incidents?
+5. RESOURCE RECOMMENDATIONS: What resources or configurations need attention?
+
+Format your response as JSON with these keys:
+- riskScore (number 0-100)
+- healthStatus (string: "Healthy", "Warning", "Critical")
+- patterns (array of strings describing patterns found)
+- predictions (array of objects with: type, probability, timeframe, impact)
+- recommendations (array of objects with: priority, action, reason, impact)
+- resourceAlerts (array of objects with: resource, issue, urgency)
+- summary (string with executive summary)
+"""
+        
+        # Call Bedrock for AI analysis
+        bedrock_region = os.environ.get("BEDROCK_REGION", "us-east-1")
+        bedrock = boto3.client("bedrock-runtime", region_name=bedrock_region)
+        
+        response = bedrock.invoke_model(
+            modelId="anthropic.claude-3-haiku-20240307-v1:0",
+            contentType="application/json",
+            accept="application/json",
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 2000,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": context
+                    }
+                ]
+            })
+        )
+        
+        result = json.loads(response["body"].read())
+        ai_response = result["content"][0]["text"]
+        
+        # Parse AI response (try to extract JSON)
+        try:
+            # Find JSON in response
+            json_start = ai_response.find('{')
+            json_end = ai_response.rfind('}') + 1
+            if json_start != -1 and json_end > json_start:
+                analysis_data = json.loads(ai_response[json_start:json_end])
+            else:
+                analysis_data = {
+                    "summary": ai_response,
+                    "patterns": [],
+                    "predictions": [],
+                    "recommendations": [],
+                    "riskScore": 50
+                }
+        except json.JSONDecodeError:
+            analysis_data = {
+                "summary": ai_response,
+                "patterns": [],
+                "predictions": [],
+                "recommendations": [],
+                "riskScore": 50
+            }
+        
+        # Add metadata
+        analysis_data["incidentCount"] = len(items)
+        analysis_data["analysisDate"] = datetime.utcnow().isoformat() + "Z"
+        analysis_data["timeRange"] = "Last 30 days"
+        analysis_data["severityBreakdown"] = severity_counts
+        analysis_data["topErrorTypes"] = dict(sorted(error_types.items(), key=lambda x: x[1], reverse=True)[:5])
+        analysis_data["avgResolutionTime"] = round(sum(resolution_times)/len(resolution_times), 2) if resolution_times else None
+        
+        # Add linear regression forecast
+        analysis_data["linearRegression"] = {
+            "trend": regression_result["trend"],
+            "slope": regression_result["slope"],
+            "confidence": regression_result["confidence"],
+            "nextWeekPrediction": {
+                "total": regression_result["nextWeekTotal"],
+                "dailyBreakdown": regression_result["predictions"],
+                "percentageChange": regression_result["percentageChange"],
+                "comparedTo": "current week"
+            },
+            "currentWeekTotal": regression_result["currentWeekTotal"]
+        }
+        
+        # Add daily incident history for charting
+        analysis_data["dailyHistory"] = [
+            {"date": day, "count": daily_incidents[day]} 
+            for day in sorted(daily_incidents.keys())
+        ]
+        
+        return {
+            "success": True,
+            "analysis": analysis_data
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Predictive analysis failed: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "analysis": {
+                "summary": f"Analysis failed: {str(e)}",
+                "patterns": [],
+                "predictions": [],
+                "recommendations": [],
+                "riskScore": 0
+            }
         }
