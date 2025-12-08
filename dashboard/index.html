@@ -1994,15 +1994,44 @@
             };
 
             return (
-                <div className="modal-overlay">
-                    <div className="modal" style={{maxWidth: '900px', maxHeight: '90vh', overflow: 'auto'}}>
-                        <div className="modal-header">
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100vw',
+                    height: '100vh',
+                    background: 'rgba(0, 0, 0, 0.7)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 9999
+                }}>
+                    <div style={{
+                        background: 'white',
+                        borderRadius: '16px',
+                        width: '90%',
+                        maxWidth: '900px',
+                        maxHeight: '90vh',
+                        overflow: 'auto',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                        margin: '20px'
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            padding: '20px 25px',
+                            borderBottom: '1px solid #e5e7eb',
+                            background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                            borderRadius: '16px 16px 0 0',
+                            color: 'white'
+                        }}>
                             <div>
-                                <h2 style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                                <h2 style={{display: 'flex', alignItems: 'center', gap: '10px', margin: 0, color: 'white'}}>
                                     🔮 Predictive Analysis
                                     <span style={{
                                         fontSize: '12px',
-                                        background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
+                                        background: 'rgba(255,255,255,0.2)',
                                         color: 'white',
                                         padding: '4px 10px',
                                         borderRadius: '12px'
@@ -2010,9 +2039,24 @@
                                         AI-Powered
                                     </span>
                                 </h2>
-                                <div className="incident-id">Analyzing incident patterns to predict future issues</div>
+                                <div style={{fontSize: '14px', opacity: 0.9, marginTop: '5px'}}>Analyzing incident patterns to predict future issues</div>
                             </div>
-                            <button className="modal-close" onClick={onClose}>×</button>
+                            <button 
+                                onClick={onClose}
+                                style={{
+                                    background: 'rgba(255,255,255,0.2)',
+                                    border: 'none',
+                                    color: 'white',
+                                    fontSize: '24px',
+                                    cursor: 'pointer',
+                                    borderRadius: '8px',
+                                    width: '36px',
+                                    height: '36px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
+                            >×</button>
                         </div>
 
                         {loading ? (
