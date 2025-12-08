@@ -1059,12 +1059,22 @@ def linear_regression_predict(daily_counts):
         dict with slope, intercept, predictions for next 7 days, and confidence
     """
     if len(daily_counts) < 3:
+        avg_count = sum(c for _, c in daily_counts) / len(daily_counts) if daily_counts else 0
+        # Generate simple predictions based on average
+        predictions = [
+            {"day": i, "predictedCount": round(avg_count, 1), "date": (datetime.utcnow() + timedelta(days=i)).strftime("%Y-%m-%d")}
+            for i in range(1, 8)
+        ]
+        current_total = sum(c for _, c in daily_counts)
         return {
             "slope": 0,
-            "intercept": sum(c for _, c in daily_counts) / len(daily_counts) if daily_counts else 0,
-            "predictions": [],
+            "intercept": round(avg_count, 3),
+            "predictions": predictions,
             "trend": "insufficient_data",
-            "confidence": 0
+            "confidence": 0,
+            "nextWeekTotal": round(avg_count * 7, 1),
+            "currentWeekTotal": current_total,
+            "percentageChange": 0
         }
     
     n = len(daily_counts)

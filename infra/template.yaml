@@ -175,6 +175,11 @@ Resources:
               - lambda:GetFunctionConfiguration
               - lambda:UpdateFunctionConfiguration
             Resource: "*"
+        - Statement:
+            Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+            Resource: "*"
       Events:
         GetIncidents:
           Type: HttpApi
@@ -253,6 +258,12 @@ Resources:
           Properties:
             Path: /resolve
             Method: POST
+            ApiId: !Ref RCRADashboardAPI
+        GetPredictiveAnalysis:
+          Type: HttpApi
+          Properties:
+            Path: /predictive-analysis
+            Method: GET
             ApiId: !Ref RCRADashboardAPI
 
   RCRADashboardAPI:
