@@ -999,7 +999,9 @@
         function Dashboard() {
             const toast = useToast();
             const confirm = useConfirm();
-            const [apiEndpoint, setApiEndpoint] = useState(localStorage.getItem('rcraApiEndpoint') || '');
+            // Default API endpoint for demo - can be overridden via localStorage
+            const DEFAULT_API_ENDPOINT = 'https://76ckmapns1.execute-api.us-east-1.amazonaws.com';
+            const [apiEndpoint, setApiEndpoint] = useState(localStorage.getItem('rcraApiEndpoint') || DEFAULT_API_ENDPOINT);
             const [tempEndpoint, setTempEndpoint] = useState(apiEndpoint);
             const [statistics, setStatistics] = useState(null);
             const [incidents, setIncidents] = useState([]);
